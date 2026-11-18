@@ -1,7 +1,6 @@
-/* Hallmark · shape: shells, a page head over placeholder sections that later tasks fill · genre: editorial · theme: custom · job: buy · idea: "the palette is the film: a smoke-grey sky, straw-gold ground, an ember signal and dusk-blue ink; dark mode is the dusk itself" · vibe: "warm, grounded, harvest-season, plain-spoken trade"
+/* Hallmark · shape: shells, a page head over content sections · genre: editorial · theme: custom · job: buy · idea: "the palette is the film: a smoke-grey sky, straw-gold ground, an ember signal and dusk-blue ink; dark mode is the dusk itself" · vibe: "warm, grounded, harvest-season, plain-spoken trade"
  * paper: oklch(96.5% 0.006 250) · accent: oklch(56% 0.17 42) · display: Solway 700 · body: Figtree 400/600 · hero: the h1 set large on the smoke paper with one sentence and the two doors · nav: wordmark, five page links, bag pill; on phones the links drop to their own short row, no hamburger · footer: a straw-gold ground band, the wordmark over the links and the demo line · imagery: none yet (the Home film and its stills come later) · signature: the straw-gold ground every page stands on
  * axes: light/slab-serif/warm · posture: full palette (paper smoke, field straw, signal ember, ink dusk) · modes: light+dark · contrast: pass · fold: pass · v2.0.0 */
-/* Hallmark · waive 77 · every section below the page head is a dashed placeholder at full width · these are shells; Tasks 5 to 8 fill each placeholder with products, forms, the film and sources */
 /* Hallmark · waive 79 · page heads hold only the h1 and lede over placeholders, and the home head is one centred full screen · Task 7 puts the scroll film behind the home screen and Tasks 5 to 8 replace the placeholders under the inner heads */
 /* Hallmark · dismissed F4 · .bag-btn span is the bag count badge, not a second filled button */
 /* Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V4 · weakest: S, shells carry only a head each until later tasks; the four mandated colours are given story roles (sky, ground, signal, ink) so even the empty pages read as this business */
@@ -172,9 +171,6 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 .section + .section { border-top: 1px solid var(--color-rule); }
 .section-head { max-width: 40rem; margin-bottom: var(--space-xl); }
 .section-head p { color: var(--color-muted); margin: 0; }
-/* placeholder: marks the space a later task fills; delete the class when it does */
-.placeholder { padding: var(--space-xl); border: 2px dashed var(--color-rule); border-radius: var(--radius-card); }
-.placeholder p { margin: 0; color: var(--color-muted); }
 
 /* Card: one containment layer for products and offers */
 .card {
@@ -283,7 +279,6 @@ dialog .btn { width: 100%; }
   :root { --gutter: 16px; --section-gap: 72px; --header-h: 3.75rem; }
   .page-head { padding-block: var(--space-2xl) var(--space-xl); }
   .section { padding-block: var(--space-2xl); }
-  .placeholder { padding: var(--space-lg); }
 }
 
 /* Motion: only for people who have not asked for less */
@@ -395,4 +390,23 @@ html.no-film .beat::after { content: ""; position: absolute; inset: 0; backgroun
   .beat { padding-block: var(--space-2xl); }
   .counters { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
   .counters div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }
+}
+
+/* Impact and Help: facts list, three-step money flow, numbers list, FAQ */
+.facts { margin: 0 0 var(--space-lg); padding-left: var(--space-lg); max-width: 44rem; display: grid; gap: var(--space-sm); }
+.flow { list-style: none; margin: 0 0 var(--space-lg); padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-xl); }
+.flow li { position: relative; }
+.flow li + li::before { content: ""; position: absolute; left: calc(-1 * var(--space-xl)); top: 50%; width: var(--space-xl); border-top: 2px solid var(--color-accent); }
+.flow-n { font-family: var(--font-display); font-size: var(--text-xl); color: var(--color-accent); }
+.numbers { margin: 0 0 var(--space-lg); display: grid; gap: var(--space-md); max-width: 44rem; }
+.numbers div { padding-bottom: var(--space-md); border-bottom: 1px solid var(--color-rule); }
+.numbers dt { font-weight: 600; font-size: var(--text-lg); }
+.numbers dd { margin: var(--space-2xs) 0 0; color: var(--color-muted); }
+.faq { max-width: 44rem; }
+.faq details { border-bottom: 1px solid var(--color-rule); }
+.faq summary { min-height: var(--tap); display: flex; align-items: center; font-weight: 600; cursor: pointer; }
+.faq details p { margin: 0 0 var(--space-md); color: var(--color-muted); }
+@media (max-width: 40rem) {
+  .flow { grid-template-columns: 1fr; gap: var(--space-lg); }
+  .flow li + li::before { left: 50%; top: calc(-1 * var(--space-lg)); width: 0; height: var(--space-lg); border-top: 0; border-left: 2px solid var(--color-accent); }
 }
