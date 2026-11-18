@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sponsor a field | StrawCycle</title>
+  <meta name="description" content="Pay ฿99 to keep one rai of northern Thai rice field from being burned, and get a certificate with your name on it.">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23efcd79'/%3E%3Crect x='6' y='19' width='20' height='4' fill='%23142139'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=Solway:wght@700&display=swap" rel="stylesheet">
+  <script>
+    // Hide reveal sections only while app.js is expected; if it never runs (opened from disk, blocked), show everything.
+    document.documentElement.classList.add('js');
+    setTimeout(function () { if (!window.scReady) document.documentElement.classList.remove('js'); }, 1500);
+  </script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap bar">
+      <a class="wordmark" href="index.html">StrawCycle</a>
+      <nav class="nav" aria-label="Main">
+        <a href="index.html">Home</a>
+        <a href="business.html">Business</a>
+        <a href="sponsor.html" aria-current="page">Sponsor</a>
+        <a href="impact.html">Impact</a>
+        <a href="help.html">Help</a>
+      </nav>
+      <button class="bag-btn" type="button" data-open-bag>Bag <span id="bag-count">0</span></button>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="page-head" aria-labelledby="page-title">
+      <div class="wrap">
+        <h1 id="page-title">Sponsor a field</h1>
+        <p class="lead">฿99 pays a farmer for one rai of straw instead of fire.</p>
+      </div>
+    </section>
+
+    <section class="section" id="sponsor-rai" aria-labelledby="sponsor-rai-title" data-fill="task-6">
+      <div class="wrap">
+        <div class="placeholder reveal">
+          <h2 id="sponsor-rai-title">Choose your rai and your province</h2>
+          <p>The rai picker and a live certificate preview are added in a later step.</p>
+        </div>
+      </div>
+    </section>
+    <section class="section" id="home-pack" aria-labelledby="home-pack-title" data-fill="task-6">
+      <div class="wrap">
+        <div class="placeholder reveal">
+          <h2 id="home-pack-title">A home pack of meal boxes</h2>
+          <p>The home pack is added in a later step.</p>
+        </div>
+      </div>
+    </section>
+    <section class="section" id="where" aria-labelledby="where-title" data-fill="task-6">
+      <div class="wrap">
+        <div class="placeholder reveal">
+          <h2 id="where-title">Where your ฿99 goes</h2>
+          <p>A short explainer, from farmer to field, is added in a later step.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap foot">
+      <a class="wordmark" href="index.html">StrawCycle</a>
+      <nav class="foot-nav" aria-label="Footer">
+        <a href="index.html">Home</a>
+        <a href="business.html">Business</a>
+        <a href="sponsor.html">Sponsor</a>
+        <a href="impact.html">Impact</a>
+        <a href="help.html">Help</a>
+      </nav>
+      <p class="demo-line">A class project: demo shop, no real orders. Counters are illustrative.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
