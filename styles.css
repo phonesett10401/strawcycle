@@ -227,6 +227,31 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 .bag-totals dt, .bag-totals dd { margin: 0; }
 .bag-totals .grand { margin-top: var(--space-xs); padding-top: var(--space-xs); border-top: 1px solid var(--color-ink); font-weight: 600; font-size: var(--text-lg); }
 #bag-checkout { width: 100%; }
+.bl-info { display: grid; }
+.bl-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-md); }
+.bl-qty { display: inline-flex; align-items: center; gap: var(--space-xs); }
+.bl-qty input {
+  width: 5rem; min-height: var(--tap); padding: 0 var(--space-xs); border: 1px solid var(--color-muted); border-radius: var(--radius-control);
+  background: var(--color-paper); color: var(--color-ink);
+}
+.bl-total { margin-left: auto; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bag-empty { color: var(--color-muted); }
+.certs { display: grid; gap: var(--space-md); margin-bottom: var(--space-md); }
+.certificate { padding: var(--space-lg); border: 2px solid var(--color-ink); border-radius: var(--radius-card); background: var(--color-field); color: var(--color-field-ink); }
+.certificate h3 { margin-bottom: var(--space-sm); }
+.certificate .fine { color: var(--color-field-muted); }
+.cert-kicker { margin: 0 0 var(--space-xs); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.demo-confirm { padding: var(--space-lg); border: 2px solid var(--color-accent); border-radius: var(--radius-card); }
+.demo-confirm h3 { margin-bottom: var(--space-xs); }
+@media print {
+  body.printing-cert > *:not(#checkout-dialog) { display: none !important; }
+  body.printing-cert #checkout-dialog { position: static; display: block; width: auto; max-height: none; padding: 0; border: 0; overflow: visible; opacity: 1; transform: none; background: #fff; }
+  body.printing-cert #checkout-dialog > .close, body.printing-cert #checkout-form, body.printing-cert #confirmation > :not(.certs),
+  body.printing-cert .certificate:not(.printing), body.printing-cert .certificate .btn { display: none !important; }
+  body.printing-cert .certs { display: block; margin: 0; }
+  body.printing-cert .certificate { background: #fff; color: #000; border: 3px solid #000; padding: 2rem; }
+  body.printing-cert .certificate .fine { color: #333; }
+}
 dialog {
   width: min(36rem, 100% - var(--space-lg)); max-height: calc(100dvh - var(--space-lg)); padding: var(--space-lg);
   border: 1px solid var(--color-rule); border-radius: var(--radius-card); background: var(--color-paper); color: var(--color-ink);
@@ -275,12 +300,11 @@ dialog .btn { width: 100%; }
 
   #bag { transform: translateX(100%); transition: transform 350ms var(--ease-out); }
   #bag.open { transform: none; }
-  #bag-backdrop { transition: opacity 300ms var(--ease-out); }
+  #bag-backdrop { opacity: 0; transition: opacity 300ms var(--ease-out); }
+  #bag-backdrop.open { opacity: 1; }
   dialog { opacity: 0; transform: translateY(12px); }
   dialog[open] { opacity: 1; transform: none; transition: opacity 250ms var(--ease-out), transform 250ms var(--ease-out), overlay 250ms allow-discrete, display 250ms allow-discrete; }
   @starting-style {
-    #bag.open { transform: translateX(100%); }
-    #bag-backdrop { opacity: 0; }
     dialog[open] { opacity: 0; transform: translateY(12px); }
   }
 }
