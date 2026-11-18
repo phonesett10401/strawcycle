@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <title>Straw folding into packaging</title>
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#16213e"/><stop offset=".52" stop-color="#3a4d70"/><stop offset=".6" stop-color="#1a2034"/><stop offset="1" stop-color="#0e1018"/></linearGradient>
+    <radialGradient id="g" cx="800" cy="520" r="440" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#ffc874" stop-opacity=".45"/><stop offset="1" stop-color="#ffc874" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#s)"/>
+  <path d="M0 500 L260 455 L540 480 L820 440 L1100 478 L1380 448 L1600 470 V545 H0Z" fill="#2a3656"/>
+  <rect width="1600" height="900" fill="url(#g)"/>
+  <g fill="none" stroke="#ffd58a" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="14 18" opacity=".85">
+    <path d="M200 820 C 420 760 520 360 800 330 C 1080 300 1180 520 980 560"/>
+    <path d="M1400 840 C 1180 760 1120 420 860 380 C 640 350 560 520 700 560"/>
+    <path d="M500 860 C 640 700 980 700 1040 520"/>
+  </g>
+  <g fill="#e9d6a6" stroke="#fff1c8" stroke-width="2">
+    <path d="M560 520 h200 v80 h-200z"/><path d="M552 512 h216 v10 h-216z"/>
+    <path d="M820 530 h130 q-10 70 -65 74 q-55 -4 -65 -74z"/>
+    <path d="M1010 470 h70 l-12 132 h-46z"/><path d="M1004 462 h82 v10 h-82z"/>
+  </g>
+</svg>

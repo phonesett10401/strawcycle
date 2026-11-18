@@ -355,3 +355,44 @@ dialog .btn { width: 100%; }
 .pack { max-width: 40rem; }
 .steps { display: grid; gap: var(--space-sm); max-width: 40rem; padding-left: var(--space-lg); }
 @media (min-width: 48rem) { .sponsor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xl); } }
+
+/* Home: the scroll film. The film is always dusk, so the Home page takes the dusk tokens in light mode too
+   (same values as the dark block above; keep them in sync). */
+body.home {
+  --color-paper: oklch(20% 0.035 262); --color-paper-2: oklch(24% 0.035 262); --color-paper-3: oklch(28% 0.035 262);
+  --color-ink: oklch(93% 0.025 88); --color-ink-2: oklch(86% 0.025 88); --color-muted: oklch(76% 0.025 85);
+  --color-rule: oklch(34% 0.03 262); --color-field: oklch(29% 0.045 70); --color-field-ink: oklch(93% 0.025 88);
+  --color-field-muted: oklch(80% 0.03 85); --color-accent: oklch(72% 0.15 50); --color-accent-hover: oklch(78% 0.13 55);
+  --color-accent-ink: oklch(20% 0.035 262); --color-focus: oklch(74% 0.17 50); --color-error: oklch(72% 0.16 27);
+  --color-shade: oklch(10% 0.03 262 / 0.6);
+  --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
+  color-scheme: dark;
+}
+#film { position: fixed; inset: 0; z-index: -1; display: block; width: 100%; height: 100vh; height: 100lvh; pointer-events: none; }
+html.no-film #film { display: none; }
+.home .site-footer { position: relative; }
+.page-head--home h1, .page-head--home .lead, .beat .caption, .doors h2 { text-shadow: var(--film-shadow); }
+.skip-film {
+  display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
+  color: var(--color-ink-2); font-weight: 600; text-shadow: var(--film-shadow);
+}
+.skip-film:hover { color: var(--color-ink); text-decoration-thickness: 2px; }
+
+.beat { position: relative; display: grid; align-items: end; min-height: 100svh; padding-block: var(--space-3xl); overflow: hidden; }
+.caption { position: relative; z-index: 1; }
+.caption h2 { max-width: 20ch; margin: 0; }
+.kicker { margin: 0 0 var(--space-sm); color: var(--color-accent); font-weight: 600; font-size: var(--text-sm); letter-spacing: 0.08em; text-transform: uppercase; }
+.still { display: none; }
+html.no-film .still { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+html.no-film .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, oklch(14% 0.03 262 / 0.85), oklch(14% 0.03 262 / 0) 65%); }
+.counters-label { margin: var(--space-xl) 0 var(--space-sm); color: var(--color-ink-2); font-size: var(--text-sm); }
+.counters { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: var(--space-md) var(--space-xl); margin: 0; }
+.counters dt { font-size: var(--text-sm); color: var(--color-ink-2); }
+.counters dd { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--text-xl); }
+.doors { display: grid; align-content: start; min-height: 100svh; padding-block: calc(var(--header-h) * 2 + var(--space-lg)) var(--space-3xl); } /* clears the sticky header (two rows on phones) when centred at the end of the film */
+.doors h2 { margin: 0; }
+@media (max-width: 40rem) {
+  .beat { padding-block: var(--space-2xl); }
+  .counters { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
+  .counters div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }
+}

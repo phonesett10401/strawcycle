@@ -21,13 +21,13 @@ export function sceneAt(p) {
   return { index, local: Math.min(1, q * 4 - index) };
 }
 
-// Placeholder camera path (Task 7 retunes): x, y, z, lookX, lookY, lookZ, evenly spaced over p.
+// Camera path: x, y, z, lookX, lookY, lookZ, evenly spaced over p (one unbroken move through the four beats).
 const KEYS = [
-  [0, 6, 3, 0, 0, 1, -4],
-  [4, 5, 2.5, 0, 1, 1.5, -4],
-  [-4, 6, 4, 0, 2, 1, -4],
-  [0, 3, 8, 0, 0, 2, -4],
-  [0, 10, 12, 0, 0, 0, -4],
+  [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
+  [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
+  [1.5, 6.5, -3, 0, 2, -16],        // above the field, smoke gone, straw lifting
+  [-1, 3.6, -7.5, 0, 2.7, -14.5],   // close on the box, bowl and cup
+  [0, 2.6, -37, 0, 1.3, -44],       // the café table, city lights beyond
 ];
 
 function catmull(a, b, c, d, u) {

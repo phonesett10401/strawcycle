@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <title>Smoke over the field</title>
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4a4646"/><stop offset=".6" stop-color="#7a6a62"/></linearGradient>
+    <linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2618"/><stop offset="1" stop-color="#1e140e"/></linearGradient>
+    <radialGradient id="p" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#5a504c" stop-opacity=".85"/><stop offset="1" stop-color="#5a504c" stop-opacity="0"/></radialGradient>
+    <linearGradient id="fire" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff7a1a" stop-opacity="0"/><stop offset=".7" stop-color="#ffb347"/><stop offset="1" stop-color="#fff0b0"/></linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#s)"/>
+  <path d="M0 560 L240 520 L520 545 L800 510 L1080 548 L1360 515 L1600 540 V620 H0Z" fill="#5c5250" opacity=".8"/>
+  <rect y="600" width="1600" height="300" fill="url(#f)"/>
+  <g fill="url(#p)"><ellipse cx="340" cy="420" rx="220" ry="260"/><ellipse cx="420" cy="200" rx="320" ry="220"/><ellipse cx="900" cy="380" rx="260" ry="300"/><ellipse cx="1000" cy="150" rx="380" ry="200"/><ellipse cx="1300" cy="430" rx="220" ry="240"/></g>
+  <g fill="url(#fire)"><path d="M120 700 Q200 640 260 700 Q330 650 420 705 L420 720 L120 720Z"/><path d="M700 660 Q780 610 850 665 Q920 620 1010 668 L1010 682 L700 682Z"/><path d="M1180 740 Q1260 680 1340 742 Q1420 690 1500 745 L1500 760 L1180 760Z"/></g>
+  <ellipse cx="860" cy="700" rx="260" ry="40" fill="#ff7a2a" opacity=".25"/>
+  <g fill="#ffa040"><circle cx="300" cy="560" r="3"/><circle cx="380" cy="480" r="2"/><circle cx="880" cy="520" r="3"/><circle cx="960" cy="430" r="2"/><circle cx="1320" cy="600" r="2.5"/></g>
+</svg>

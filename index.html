@@ -10,14 +10,23 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600&family=Solway:wght@700&display=swap" rel="stylesheet">
+  <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
   <script>
     // Hide reveal sections only while app.js is expected; if it never runs (opened from disk, blocked), show everything.
     document.documentElement.classList.add('js');
     setTimeout(function () { if (!window.scReady) document.documentElement.classList.remove('js'); }, 1500);
+    // Stills mode: the JPG sources are switched on only here, so phones that play the film never download them.
+    window.scStills = function () {
+      document.documentElement.classList.add('no-film');
+      document.querySelectorAll('source[data-srcset]').forEach(function (s) { s.srcset = s.getAttribute('data-srcset'); });
+    };
+    // The film shows the stills instead when film.js has not started within 4 s (slow network, CDN blocked, error).
+    setTimeout(function () { if (!window.scFilm) window.scStills(); }, 4000);
   </script>
+  <noscript><style>.still { display: block; }</style></noscript>
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="home">
   <a class="skip" href="#main">Skip to content</a>
 
   <header class="site-header">
@@ -35,6 +44,8 @@
   </header>
 
   <main id="main">
+    <canvas id="film" aria-hidden="true"></canvas>
+
     <section class="page-head page-head--home" aria-labelledby="page-title">
       <div class="wrap">
         <h1 id="page-title">Straw, not smoke.</h1>
@@ -43,14 +54,74 @@
           <a class="btn btn-primary" href="business.html">Packaging for your restaurant</a>
           <a class="btn btn-secondary" href="sponsor.html">Sponsor a field, ฿99</a>
         </div>
+        <a class="skip-film" href="#doors">Skip the film</a>
       </div>
     </section>
 
-    <section class="section" id="film" aria-labelledby="film-title" data-fill="task-7">
+    <section class="beat" aria-labelledby="beat-1-title">
+      <picture>
+        <source media="(orientation: portrait)" data-srcset="images/scene-1-tall.jpg">
+        <source data-srcset="images/scene-1.jpg">
+        <img class="still" src="images/scene-1.svg" alt="Golden rice stubble at sunset in northern Thailand, dust in the air and a farmer's hut on stilts." width="1600" height="900" loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-1.svg'">
+      </picture>
+      <div class="wrap caption reveal">
+        <p class="kicker">The field</p>
+        <h2 id="beat-1-title">Every year, northern farmers burn millions of rai of straw after the harvest.</h2>
+      </div>
+    </section>
+
+    <section class="beat" aria-labelledby="beat-2-title">
+      <picture>
+        <source media="(orientation: portrait)" data-srcset="images/scene-2-tall.jpg">
+        <source data-srcset="images/scene-2.jpg">
+        <img class="still" src="images/scene-2.svg" alt="Field fires and grey smoke rising into the evening sky, then the sky clearing." width="1600" height="900" loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-2.svg'">
+      </picture>
+      <div class="wrap caption reveal">
+        <p class="kicker">The smoke</p>
+        <h2 id="beat-2-title">What if the straw was worth more than the fire?</h2>
+      </div>
+    </section>
+
+    <section class="beat" aria-labelledby="beat-3-title">
+      <picture>
+        <source media="(orientation: portrait)" data-srcset="images/scene-3-tall.jpg">
+        <source data-srcset="images/scene-3.jpg">
+        <img class="still" src="images/scene-3.svg" alt="Loose straw fibres swirling in the air and folding into a meal box, a bowl and a cup." width="1600" height="900" loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-3.svg'">
+      </picture>
+      <div class="wrap caption reveal">
+        <p class="kicker">The straw</p>
+        <h2 id="beat-3-title">We buy it from the farmer and press it into packaging.</h2>
+      </div>
+    </section>
+
+    <section class="beat" aria-labelledby="beat-4-title">
+      <picture>
+        <source media="(orientation: portrait)" data-srcset="images/scene-4-tall.jpg">
+        <source data-srcset="images/scene-4.jpg">
+        <img class="still" src="images/scene-4.svg" alt="A meal box, a bowl and a cup on a café table at dusk, with Bangkok's lights behind." width="1600" height="900" loading="lazy" decoding="async"
+          onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-4.svg'">
+      </picture>
+      <div class="wrap caption reveal">
+        <p class="kicker">The table</p>
+        <h2 id="beat-4-title">Boxes, bowls and cups for Bangkok's cafés and restaurants.</h2>
+        <p class="counters-label">Illustrative counters, a story figure, not real data</p>
+        <dl class="counters">
+          <div><dt>Rai saved from burning</dt><dd class="num" data-counter="412" data-rate="0.002">412</dd></div>
+          <div><dt>Farmers paid</dt><dd class="num" data-counter="138" data-rate="0.0005">138</dd></div>
+          <div><dt>Boxes made</dt><dd class="num" data-counter="13390000" data-rate="4">13,390,000</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="doors" id="doors" aria-labelledby="doors-title">
       <div class="wrap">
-        <div class="placeholder reveal">
-          <h2 id="film-title">From a burning field to a café table</h2>
-          <p>The scroll film goes here in a later step: the field, the smoke run backwards, straw folding into boxes, a Bangkok café.</p>
+        <h2 id="doors-title">Bring the straw to your table.</h2>
+        <div class="actions">
+          <a class="btn btn-primary" href="business.html">Packaging for your restaurant</a>
+          <a class="btn btn-secondary" href="sponsor.html">Sponsor a field, ฿99</a>
         </div>
       </div>
     </section>
@@ -71,5 +142,6 @@
   </footer>
 
   <script type="module" src="app.js"></script>
+  <script type="module" src="film.js"></script>
 </body>
 </html>

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <title>The field at sunset</title>
+  <defs>
+    <linearGradient id="s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3b4460"/><stop offset=".42" stop-color="#c9774a"/><stop offset=".62" stop-color="#ffcf7a"/></linearGradient>
+    <radialGradient id="sun" cx="800" cy="540" r="420" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#fff2c0"/><stop offset=".07" stop-color="#ffd27a" stop-opacity=".9"/><stop offset="1" stop-color="#ff9a4a" stop-opacity="0"/></radialGradient>
+    <linearGradient id="f" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a5a2c"/><stop offset="1" stop-color="#3a2414"/></linearGradient>
+    <pattern id="st" width="22" height="30" patternUnits="userSpaceOnUse"><path d="M6 30 L8 8 L10 30 M15 30 L16 14 L18 30" fill="#d9a35a" opacity=".55"/></pattern>
+  </defs>
+  <rect width="1600" height="900" fill="url(#s)"/>
+  <rect width="1600" height="900" fill="url(#sun)"/>
+  <path d="M0 560 L180 520 L320 548 L520 500 L700 540 L860 505 L1040 545 L1240 510 L1420 540 L1600 515 V600 H0Z" fill="#a8664a" opacity=".7"/>
+  <path d="M0 590 L240 560 L460 585 L720 555 L980 590 L1260 560 L1600 585 V620 H0Z" fill="#7d4d3a"/>
+  <rect y="610" width="1600" height="290" fill="url(#f)"/>
+  <rect y="610" width="1600" height="290" fill="url(#st)"/>
+  <g fill="#2a1a12"><rect x="1108" y="560" width="8" height="80"/><rect x="1190" y="560" width="8" height="80"/><rect x="1096" y="556" width="114" height="10"/><rect x="1110" y="520" width="90" height="38"/><path d="M1070 528 L1153 470 L1240 528Z"/></g>
+  <circle cx="1140" cy="540" r="6" fill="#ffb760"/>
+  <g fill="#ffd894" opacity=".7"><circle cx="300" cy="420" r="2.5"/><circle cx="520" cy="300" r="2"/><circle cx="980" cy="360" r="3"/><circle cx="1320" cy="260" r="2"/><circle cx="720" cy="660" r="2.5"/><circle cx="1400" cy="640" r="2"/></g>
+</svg>
