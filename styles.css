@@ -1,9 +1,13 @@
 /* Hallmark · shape: shells, a page head over content sections · genre: editorial · theme: custom · job: buy · idea: "the palette is the film: a smoke-grey sky, straw-gold ground, an ember signal and dusk-blue ink; dark mode is the dusk itself" · vibe: "warm, grounded, harvest-season, plain-spoken trade"
- * paper: oklch(96.5% 0.006 250) · accent: oklch(56% 0.17 42) · display: Solway 700 · body: Figtree 400/600 · hero: the h1 set large on the smoke paper with one sentence and the two doors · nav: wordmark, five page links, bag pill; on phones the links drop to their own short row, no hamburger · footer: a straw-gold ground band, the wordmark over the links and the demo line · imagery: none yet (the Home film and its stills come later) · signature: the straw-gold ground every page stands on
+ * paper: oklch(96.5% 0.006 250) · accent: oklch(56% 0.17 42) · display: Solway 700 · body: Figtree 400/600 · hero: the h1 set large on the smoke paper with one sentence and the two doors · nav: wordmark, five page links, bag pill; on phones the links drop to their own short row, no hamburger · footer: a straw-gold ground band, the wordmark over the links and the demo line · imagery: the Home scroll film (Three.js) over four stills, one per scene · signature: the straw-gold ground every page stands on
  * axes: light/slab-serif/warm · posture: full palette (paper smoke, field straw, signal ember, ink dusk) · modes: light+dark · contrast: pass · fold: pass · v2.0.0 */
-/* Hallmark · waive 79 · page heads hold only the h1 and lede over placeholders, and the home head is one centred full screen · Task 7 puts the scroll film behind the home screen and Tasks 5 to 8 replace the placeholders under the inner heads */
+/* Hallmark · waive 79 · the home head is one centred full screen over the scroll film · the dusk film fills the space below the doors, so the band is sky, not nothing */
+/* Hallmark · waive 77 · prose, FAQ and three-step lists held to a reading measure; home doors and the home pack are one line and an action · classmates read these on phones and a projector, so lines stay short */
+/* Hallmark · waive 49b · a real phrase that cannot shorten, two lines at most · the source link keeps Thai-German Cooperation's own name and wraps only below 375px */
+/* Hallmark · dismissed F6 · .sticker-num and .counters dd both carry the .num class, which sets tabular-nums */
+/* Hallmark · dismissed F20 · five products sit 4 + 1 at 1440; a fifth column would squeeze each card's carton input and logo checkbox */
 /* Hallmark · dismissed F4 · .bag-btn span is the bag count badge, not a second filled button */
-/* Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V4 · weakest: S, shells carry only a head each until later tasks; the four mandated colours are given story roles (sky, ground, signal, ink) so even the empty pages read as this business */
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R5 V4 · weakest: S, the impact page is a sources page and stays text-led; the four mandated colours are given story roles (sky, ground, signal, ink) so even the empty pages read as this business */
 
 /* Tokens. Straw gold, ember orange, smoke grey and dusk blue are the four starting colours.
    Light: smoke paper, dusk ink, straw ground, ember signal. Dark: dusk paper, straw-white ink, earth ground, a brighter ember. */
@@ -24,6 +28,17 @@
   --color-focus: oklch(55% 0.2 40);
   --color-error: oklch(52% 0.19 27);
   --color-shade: oklch(25% 0.05 262 / 0.5);
+
+  /* Dusk: the dark palette, also worn by the Home film page in both modes (mapped below) */
+  --dusk-paper: oklch(20% 0.035 262); --dusk-paper-2: oklch(24% 0.035 262); --dusk-paper-3: oklch(28% 0.035 262);
+  --dusk-ink: oklch(93% 0.025 88); --dusk-ink-2: oklch(86% 0.025 88); --dusk-muted: oklch(76% 0.025 85);
+  --dusk-rule: oklch(34% 0.03 262); --dusk-field: oklch(29% 0.045 70); --dusk-field-muted: oklch(80% 0.03 85);
+  --dusk-accent: oklch(72% 0.15 50); --dusk-accent-hover: oklch(78% 0.13 55); --dusk-focus: oklch(74% 0.17 50);
+  --dusk-error: oklch(72% 0.16 27); --dusk-shade: oklch(10% 0.03 262 / 0.6);
+  --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
+  --film-scrim: oklch(14% 0.03 262 / 0.85);
+  /* Print: a certificate prints black on white paper */
+  --print-paper: oklch(99.5% 0.005 90); --print-ink: oklch(16% 0.02 262); --print-muted: oklch(34% 0.02 262);
 
   --font-display: "Solway", "Rockwell", ui-serif, Georgia, serif;
   --font-body: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -54,22 +69,13 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-paper: oklch(20% 0.035 262);     /* dusk */
-    --color-paper-2: oklch(24% 0.035 262);
-    --color-paper-3: oklch(28% 0.035 262);
-    --color-ink: oklch(93% 0.025 88);         /* straw-white */
-    --color-ink-2: oklch(86% 0.025 88);
-    --color-muted: oklch(76% 0.025 85);
-    --color-rule: oklch(34% 0.03 262);
-    --color-field: oklch(29% 0.045 70);       /* the field after dark: earth */
-    --color-field-ink: oklch(93% 0.025 88);
-    --color-field-muted: oklch(80% 0.03 85);
-    --color-accent: oklch(72% 0.15 50);
-    --color-accent-hover: oklch(78% 0.13 55);
-    --color-accent-ink: oklch(20% 0.035 262);
-    --color-focus: oklch(74% 0.17 50);
-    --color-error: oklch(72% 0.16 27);
-    --color-shade: oklch(10% 0.03 262 / 0.6);
+    /* dusk paper, straw-white ink, earth ground, a brighter ember */
+    --color-paper: var(--dusk-paper); --color-paper-2: var(--dusk-paper-2); --color-paper-3: var(--dusk-paper-3);
+    --color-ink: var(--dusk-ink); --color-ink-2: var(--dusk-ink-2); --color-muted: var(--dusk-muted);
+    --color-rule: var(--dusk-rule); --color-field: var(--dusk-field); --color-field-ink: var(--dusk-ink);
+    --color-field-muted: var(--dusk-field-muted); --color-accent: var(--dusk-accent); --color-accent-hover: var(--dusk-accent-hover);
+    --color-accent-ink: var(--dusk-paper); --color-focus: var(--dusk-focus); --color-error: var(--dusk-error);
+    --color-shade: var(--dusk-shade);
   }
 }
 
@@ -80,9 +86,10 @@ html { scrollbar-color: var(--color-muted) var(--color-paper); scroll-padding-to
 body {
   margin: 0; background: var(--color-paper); color: var(--color-ink);
   font-family: var(--font-body); font-size: var(--text-md); line-height: 1.6;
-  font-synthesis: none; -webkit-font-smoothing: antialiased;
+  font-synthesis: none; -webkit-font-smoothing: antialiased; caret-color: var(--color-accent);
 }
 img, svg, video { display: block; max-width: 100%; height: auto; }
+figure { margin: 0; }
 [hidden] { display: none !important; }
 p { margin: 0 0 var(--space-md); text-wrap: pretty; }
 p:not([class]) { max-width: 65ch; }
@@ -96,6 +103,7 @@ h1 { font-size: var(--text-display); line-height: 1.02; max-width: 16ch; }
 h2 { font-size: var(--text-section); max-width: 24ch; }
 h3 { font-size: var(--text-title); line-height: 1.2; }
 :focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+[tabindex="-1"]:focus { outline: none; } /* headings and panels focused by script, not controls */
 ::selection { background: var(--color-field); color: var(--color-field-ink); }
 
 .wrap { width: min(var(--container), 100% - 2 * var(--gutter)); margin-inline: auto; }
@@ -127,7 +135,6 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
   flex: none; display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); min-width: var(--tap);
   color: var(--color-muted); text-decoration: none; white-space: nowrap;
 }
-.nav a:hover { color: var(--color-ink); text-decoration: underline; }
 .nav a[aria-current="page"] { color: var(--color-ink); font-weight: 600; text-decoration: underline; text-decoration-color: var(--color-accent); text-decoration-thickness: 2px; }
 .nav a:focus-visible { outline-offset: -2px; }
 .bag-btn {
@@ -140,7 +147,6 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
   border-radius: var(--radius-pill); background: var(--color-ink); color: var(--color-paper);
   font-size: var(--text-sm); font-variant-numeric: tabular-nums;
 }
-.bag-btn:hover { background: var(--color-paper-2); }
 .bag-btn:active { background: var(--color-paper-3); }
 
 /* Buttons: .btn alone is the primary look, so injected markup that only says "btn" still reads right */
@@ -150,16 +156,13 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
   background: var(--color-accent); color: var(--color-accent-ink);
   font-weight: 600; line-height: 1.2; text-decoration: none; white-space: nowrap; cursor: pointer;
 }
-.btn:hover, .btn-primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
 .btn-secondary { background: transparent; color: var(--color-ink); border-color: var(--color-ink); }
-.btn-secondary:hover { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-paper); }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .actions { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-xl); }
 .close {
   min-height: var(--tap); padding: 0 var(--space-md); border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--color-ink); text-decoration: underline; text-underline-offset: 0.2em; cursor: pointer;
 }
-.close:hover { color: var(--color-accent); }
 
 /* Page head: the h1, one sentence, and on Home the two doors */
 .page-head { padding-block: var(--space-3xl) var(--space-2xl); }
@@ -217,7 +220,6 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
   min-height: var(--tap); padding: 0 var(--space-xs); border: 0; background: none; color: var(--color-muted);
   text-decoration: underline; cursor: pointer;
 }
-#bag-items button:hover { color: var(--color-accent); }
 .bag-totals { margin: 0; font-variant-numeric: tabular-nums; }
 .bag-totals div { display: flex; justify-content: space-between; padding: var(--space-2xs) 0; }
 .bag-totals dt, .bag-totals dd { margin: 0; }
@@ -234,19 +236,19 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
 .bag-empty { color: var(--color-muted); }
 .certs { display: grid; gap: var(--space-md); margin-bottom: var(--space-md); }
 .certificate { padding: var(--space-lg); border: 2px solid var(--color-ink); border-radius: var(--radius-card); background: var(--color-field); color: var(--color-field-ink); }
-.certificate h3 { margin-bottom: var(--space-sm); }
+.certificate h3 { margin: 0 0 var(--space-xs); font-family: var(--font-body); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0; line-height: 1.4; }
+.cert-name { margin: 0 0 var(--space-sm); font-family: var(--font-display); font-weight: 700; font-size: var(--text-title); line-height: 1.2; overflow-wrap: anywhere; }
 .certificate .fine { color: var(--color-field-muted); }
-.cert-kicker { margin: 0 0 var(--space-xs); font-size: var(--text-sm); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
 .demo-confirm { padding: var(--space-lg); border: 2px solid var(--color-accent); border-radius: var(--radius-card); }
 .demo-confirm h3 { margin-bottom: var(--space-xs); }
 @media print {
   body.printing-cert > *:not(#checkout-dialog) { display: none !important; }
-  body.printing-cert #checkout-dialog { position: static; display: block; width: auto; max-height: none; padding: 0; border: 0; overflow: visible; opacity: 1; transform: none; background: #fff; }
+  body.printing-cert #checkout-dialog { position: static; display: block; width: auto; max-height: none; padding: 0; border: 0; overflow: visible; opacity: 1; transform: none; background: var(--print-paper); }
   body.printing-cert #checkout-dialog > .close, body.printing-cert #checkout-form, body.printing-cert #confirmation > :not(.certs),
   body.printing-cert .certificate:not(.printing), body.printing-cert .certificate .btn { display: none !important; }
   body.printing-cert .certs { display: block; margin: 0; }
-  body.printing-cert .certificate { background: #fff; color: #000; border: 3px solid #000; padding: 2rem; }
-  body.printing-cert .certificate .fine { color: #333; }
+  body.printing-cert .certificate { background: var(--print-paper); color: var(--print-ink); border: 3px solid var(--print-ink); padding: 2rem; }
+  body.printing-cert .certificate .fine { color: var(--print-muted); }
 }
 dialog {
   width: min(36rem, 100% - var(--space-lg)); max-height: calc(100dvh - var(--space-lg)); padding: var(--space-lg);
@@ -263,7 +265,6 @@ dialog .btn { width: 100%; }
 .foot .wordmark { color: var(--color-field-ink); }
 .foot-nav { display: flex; flex-wrap: wrap; gap: 0 var(--space-md); }
 .foot-nav a { display: inline-flex; align-items: center; justify-content: center; min-height: var(--tap); min-width: var(--tap); }
-.foot-nav a:hover { text-decoration-thickness: 2px; }
 .demo-line { margin: 0; color: var(--color-field-muted); font-size: var(--text-sm); }
 
 /* Wider screens */
@@ -279,6 +280,18 @@ dialog .btn { width: 100%; }
   :root { --gutter: 16px; --section-gap: 72px; --header-h: 3.75rem; }
   .page-head { padding-block: var(--space-2xl) var(--space-xl); }
   .section { padding-block: var(--space-2xl); }
+}
+
+/* Hover only where a pointer hovers, so a tap on a phone leaves no stuck fill */
+@media (hover: hover) {
+  .nav a:hover { color: var(--color-ink); text-decoration: underline; }
+  .bag-btn:hover { background: var(--color-paper-2); }
+  .btn:hover, .btn-primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); }
+  .btn-secondary:hover { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-paper); }
+  .close:hover { color: var(--color-accent); }
+  #bag-items button:hover { color: var(--color-accent); }
+  .foot-nav a:hover { text-decoration-thickness: 2px; }
+  .skip-film:hover { color: var(--color-ink); text-decoration-thickness: 2px; }
 }
 
 /* Motion: only for people who have not asked for less */
@@ -334,7 +347,7 @@ dialog .btn { width: 100%; }
   border: 3px solid var(--color-field-ink); border-radius: 50%; background: var(--color-field); color: var(--color-field-ink); text-align: center;
   box-shadow: inset 0 0 0 8px var(--color-field), inset 0 0 0 10px var(--color-field-ink);
 }
-.sticker-kicker { font-weight: 600; font-size: var(--text-sm); letter-spacing: 0.06em; text-transform: uppercase; }
+.sticker-kicker { font-weight: 600; font-size: var(--text-sm); }
 .sticker-num { font-family: var(--font-display); font-weight: 700; font-size: 4.5rem; line-height: 1; }
 .sticker-line { font-weight: 600; }
 .sticker-fig figcaption { margin-top: var(--space-md); max-width: 24rem; }
@@ -346,21 +359,19 @@ dialog .btn { width: 100%; }
 .stepper { display: grid; grid-template-columns: var(--tap) minmax(0, 6rem) var(--tap); gap: var(--space-xs); align-items: center; }
 .stepper .btn { padding: 0; min-width: var(--tap); }
 .stepper input { text-align: center; }
-.certificate h3 { overflow-wrap: anywhere; }
 .pack { max-width: 40rem; }
 .steps { display: grid; gap: var(--space-sm); max-width: 40rem; padding-left: var(--space-lg); }
 @media (min-width: 48rem) { .sponsor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xl); } }
 
 /* Home: the scroll film. The film is always dusk, so the Home page takes the dusk tokens in light mode too
-   (same values as the dark block above; keep them in sync). */
+   (the same --dusk-* tokens the dark block maps). */
 body.home {
-  --color-paper: oklch(20% 0.035 262); --color-paper-2: oklch(24% 0.035 262); --color-paper-3: oklch(28% 0.035 262);
-  --color-ink: oklch(93% 0.025 88); --color-ink-2: oklch(86% 0.025 88); --color-muted: oklch(76% 0.025 85);
-  --color-rule: oklch(34% 0.03 262); --color-field: oklch(29% 0.045 70); --color-field-ink: oklch(93% 0.025 88);
-  --color-field-muted: oklch(80% 0.03 85); --color-accent: oklch(72% 0.15 50); --color-accent-hover: oklch(78% 0.13 55);
-  --color-accent-ink: oklch(20% 0.035 262); --color-focus: oklch(74% 0.17 50); --color-error: oklch(72% 0.16 27);
-  --color-shade: oklch(10% 0.03 262 / 0.6);
-  --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
+  --color-paper: var(--dusk-paper); --color-paper-2: var(--dusk-paper-2); --color-paper-3: var(--dusk-paper-3);
+  --color-ink: var(--dusk-ink); --color-ink-2: var(--dusk-ink-2); --color-muted: var(--dusk-muted);
+  --color-rule: var(--dusk-rule); --color-field: var(--dusk-field); --color-field-ink: var(--dusk-ink);
+  --color-field-muted: var(--dusk-field-muted); --color-accent: var(--dusk-accent); --color-accent-hover: var(--dusk-accent-hover);
+  --color-accent-ink: var(--dusk-paper); --color-focus: var(--dusk-focus); --color-error: var(--dusk-error);
+  --color-shade: var(--dusk-shade);
   color-scheme: dark;
 }
 #film { position: fixed; inset: 0; z-index: -1; display: block; width: 100%; height: 100vh; height: 100lvh; pointer-events: none; }
@@ -371,15 +382,13 @@ html.no-film #film { display: none; }
   display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
   color: var(--color-ink-2); font-weight: 600; text-shadow: var(--film-shadow);
 }
-.skip-film:hover { color: var(--color-ink); text-decoration-thickness: 2px; }
 
 .beat { position: relative; display: grid; align-items: end; min-height: 100svh; padding-block: var(--space-3xl); overflow: hidden; }
 .caption { position: relative; z-index: 1; }
 .caption h2 { max-width: 20ch; margin: 0; }
-.kicker { margin: 0 0 var(--space-sm); color: var(--color-accent); font-weight: 600; font-size: var(--text-sm); letter-spacing: 0.08em; text-transform: uppercase; }
 .still { display: none; }
 html.no-film .still { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-html.no-film .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, oklch(14% 0.03 262 / 0.85), oklch(14% 0.03 262 / 0) 65%); }
+html.no-film .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, var(--film-scrim), transparent 65%); }
 .counters-label { margin: var(--space-xl) 0 var(--space-sm); color: var(--color-ink-2); font-size: var(--text-sm); }
 .counters { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: var(--space-md) var(--space-xl); margin: 0; }
 .counters dt { font-size: var(--text-sm); color: var(--color-ink-2); }

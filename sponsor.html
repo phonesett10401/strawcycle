@@ -57,7 +57,7 @@
           </div>
           <div class="field">
             <label for="sp-province">Province</label>
-            <select id="sp-province" name="province"></select>
+            <select id="sp-province" name="province"><option>Chiang Rai</option><option>Chiang Mai</option><option>Lampang</option><option>Nan</option></select>
           </div>
           <div class="field">
             <label for="sp-name">Name on the certificate</label>
@@ -65,17 +65,17 @@
           </div>
           <p class="total-row"><span class="fine">Total</span> <span class="line num" id="sp-total">฿99</span></p>
           <button class="btn btn-primary" id="sp-add" type="submit">Sponsor and add to bag</button>
-          <p class="fine" id="sp-status" role="status" aria-live="polite"></p>
+          <p class="fine" id="sp-status"></p>
         </form>
-        <div class="reveal">
-          <p class="fine">Preview of your certificate</p>
+        <figure class="reveal">
+          <figcaption class="fine">Preview of your certificate</figcaption>
           <article class="certificate" aria-label="Certificate preview">
-            <p class="cert-kicker">StrawCycle field certificate</p>
-            <h3 id="pv-name">Your name</h3>
+            <h3>StrawCycle field certificate</h3>
+            <p class="cert-name" id="pv-name">Your name</p>
             <p><span id="pv-rai">1 rai</span> of rice field in <span id="pv-province">Chiang Rai</span> kept from being burned.</p>
             <p class="fine">The field ID and date are added at checkout. Demo certificate.</p>
           </article>
-        </div>
+        </figure>
       </div>
     </section>
     <section class="section" id="home-pack" aria-labelledby="home-pack-title">

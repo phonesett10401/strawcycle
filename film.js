@@ -447,7 +447,7 @@ function build(canvas, renderer) {
 
   function dispose() {
     scene.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
-    renderer.dispose();
+    renderer.dispose(); renderer.forceContextLoss();  // hand the GPU context back at once
   }
   return { render, dispose, resize, renderer };
 }
@@ -464,7 +464,7 @@ async function boot() {
   const probe = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
   const webgl = !!probe;
   probe?.getExtension('WEBGL_lose_context')?.loseContext();  // free the probe's context at once
-  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)'), reducedMotion = motion.matches;
   if (!canvas || !webgl || reducedMotion || root.classList.contains('no-film') || new URLSearchParams(location.search).get('film') === 'off') return fallback();
 
   let film;
@@ -478,11 +478,12 @@ async function boot() {
   const target = () => clamp01(scrollY / end);
   const stop = () => {
     cancelAnimationFrame(raf); removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onVis);
-    canvas.removeEventListener('webglcontextlost', onLost); film.dispose(); fallback();
+    canvas.removeEventListener('webglcontextlost', onLost); motion.removeEventListener('change', onMotion); film.dispose(); fallback();
   };
   function frame(now) {
     if (manual) return;
     raf = requestAnimationFrame(frame);
+    if (last && now - last < 12) return;  // 90/120 Hz screens draw every other frame (battery)
     const dt = last ? now - last : 16; last = now;
     shown += (target() - shown) * (1 - Math.exp(-dt / 120));  // a little damping on wheel steps
     const t = (now - t0) / 1000;
@@ -495,9 +496,11 @@ async function boot() {
   const onResize = () => { film.resize(); measure(); };
   const onVis = () => { cancelAnimationFrame(raf); if (!document.hidden && !manual) { last = 0; raf = requestAnimationFrame(frame); } };
   const onLost = (e) => { e.preventDefault(); stop(); };
+  const onMotion = (e) => { if (e.matches) stop(); };  // reduced motion switched on mid-visit: stills
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
-  canvas.addEventListener('webglcontextlost', onLost);
+  canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
   measure(); shown = target();
+  document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
   // with ?film=video for capture (see VIDEO above).
   window.scFilm = { render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };

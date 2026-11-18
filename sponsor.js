@@ -4,10 +4,11 @@ const $ = (s) => document.querySelector(s);
 const rai = $('#sp-rai'), province = $('#sp-province'), name = $('#sp-name'), status = $('#sp-status');
 const clampRai = () => { const n = Math.floor(Number(rai.value)); return Number.isFinite(n) ? Math.min(MAX_RAI, Math.max(1, n)) : 1; };
 
-PROVINCES.forEach((p) => province.append(new Option(p, p)));
+province.replaceChildren(...PROVINCES.map((p) => new Option(p, p))); // the HTML lists them too, for JS off
 
 function update() {
   const r = clampRai();
+  status.textContent = ''; // an old 'Added' line goes once the choice changes
   $('#sp-total').textContent = formatTHB(SPONSOR_BAHT * r);
   $('#pv-rai').textContent = `${r} rai`;
   $('#pv-province').textContent = province.value;

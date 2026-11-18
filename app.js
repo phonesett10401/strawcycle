@@ -14,7 +14,7 @@ const el = (tag, props = {}, ...kids) => {
   e.append(...kids);
   return e;
 };
-const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const motion = matchMedia('(prefers-reduced-motion: reduce)'); // read live: the setting can change mid-visit
 const store = (() => { try { return localStorage; } catch { return null; } })(); // blocked site data throws
 let bag = loadBag(store);
 
@@ -61,7 +61,7 @@ document.body.insertAdjacentHTML('beforeend', `
 
 // Reveal on scroll
 const reveals = document.querySelectorAll('.reveal');
-if (reduced || !('IntersectionObserver' in window)) {
+if (motion.matches || !('IntersectionObserver' in window)) {
   reveals.forEach((r) => r.classList.add('in'));
 } else {
   const io = new IntersectionObserver((entries) => entries.forEach((e) => {
@@ -111,7 +111,7 @@ function closeBag(restore = true) {
   bagEl.classList.remove('open'); backdrop.classList.remove('open');
   bagBtns.forEach((b) => b.setAttribute('aria-expanded', 'false'));
   const hide = () => { if (!bagOpen()) bagEl.hidden = backdrop.hidden = true; };
-  if (reduced) hide(); else { bagEl.addEventListener('transitionend', hide, { once: true }); setTimeout(hide, 400); }
+  if (motion.matches) hide(); else { bagEl.addEventListener('transitionend', hide, { once: true }); setTimeout(hide, 400); }
   if (restore) bagReturn?.focus();
 }
 document.addEventListener('click', (e) => {
@@ -138,7 +138,7 @@ function lineItem(l, i) {
   const total = el('span', { className: 'bl-total' }, formatTHB(lineTotal(l)));
   const remove = el('button', {
     type: 'button', 'aria-label': `Remove ${describe(l)}`,
-    onclick: () => { commit(removeLine(bag, i)); $('[data-close-bag]', bagEl).focus(); }, // the removed button is gone
+    onclick: () => { commit(removeLine(bag, i)); $('[data-close-bag]', bagEl).focus(); status(`Removed ${describe(l)}.`); }, // the removed button is gone
   }, 'Remove');
   if (l.kind === 'sponsor') {
     return el('li', {}, el('div', { className: 'bl-info' }, el('strong', {}, sponsorText(l)), el('span', { className: 'fine' }, 'Field sponsorship')),
@@ -190,7 +190,8 @@ window.sc = {
   getBag: () => bag,
   setBag(next) {
     commit(next);
-    openBag(document.activeElement);
+    const a = document.activeElement; // Safari does not focus a clicked button, so fall back to the bag button
+    openBag(a && a !== document.body ? a : $('[data-open-bag]'));
     status(`Added to your bag. ${bag.length} ${bag.length === 1 ? 'item' : 'items'} in the bag.`);
   },
 };
@@ -259,8 +260,8 @@ form.addEventListener('submit', (e) => {
   $('#conf-delivery').hidden = $('#conf-impact').hidden = !physical;
   $('#conf-certs').replaceChildren(...lines.filter((l) => l.kind === 'sponsor').map((l) => {
     const cert = el('article', { className: 'certificate', 'aria-label': `Certificate for ${l.name}` },
-      el('p', { className: 'cert-kicker' }, 'StrawCycle field certificate'),
-      el('h3', {}, l.name),
+      el('h3', {}, 'StrawCycle field certificate'),
+      el('p', { className: 'cert-name' }, l.name),
       el('p', {}, `has kept ${l.rai} rai of rice field in ${l.province} from being burned.`),
       el('p', { className: 'fine' }, `Field ID ${fieldId(l.province)}, ${longDate.format(now)}. Demo certificate.`),
       el('button', { type: 'button', className: 'btn btn-secondary', onclick: () => {

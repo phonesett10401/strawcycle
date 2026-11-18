@@ -1,5 +1,5 @@
 // Pure film logic for the Home scroll film: scene state from scroll progress p (0..1) and time t (s).
-// No DOM, no Three. Task 7 draws from params(); a video renderer can call it with any (p, t).
+// No DOM, no Three. film.js draws from params(); a video renderer can call it with any (p, t).
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const smooth = (a, b, x) => { const u = clamp01((x - a) / (b - a)); return u * u * (3 - 2 * u); };
