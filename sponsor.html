@@ -42,28 +42,61 @@
       </div>
     </section>
 
-    <section class="section" id="sponsor-rai" aria-labelledby="sponsor-rai-title" data-fill="task-6">
-      <div class="wrap">
-        <div class="placeholder reveal">
+    <section class="section" id="sponsor-rai" aria-labelledby="sponsor-rai-title">
+      <div class="wrap sponsor-grid">
+        <form class="card sponsor-form reveal" id="sponsor-form" novalidate>
           <h2 id="sponsor-rai-title">Choose your rai and your province</h2>
-          <p>The rai picker and a live certificate preview are added in a later step.</p>
+          <p class="fine">One rai is about 1,600 m². Each rai is ฿99, up to 10 rai at a time.</p>
+          <div class="field">
+            <label for="sp-rai">Rai</label>
+            <div class="stepper">
+              <button class="btn btn-secondary" type="button" data-step="-1" aria-label="One rai fewer">&minus;</button>
+              <input id="sp-rai" name="rai" type="number" inputmode="numeric" min="1" max="10" step="1" value="1">
+              <button class="btn btn-secondary" type="button" data-step="1" aria-label="One rai more">+</button>
+            </div>
+          </div>
+          <div class="field">
+            <label for="sp-province">Province</label>
+            <select id="sp-province" name="province"></select>
+          </div>
+          <div class="field">
+            <label for="sp-name">Name on the certificate</label>
+            <input id="sp-name" name="name" type="text" maxlength="40" autocomplete="off" required>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <span class="line num" id="sp-total">฿99</span></p>
+          <button class="btn btn-primary" id="sp-add" type="submit">Sponsor and add to bag</button>
+          <p class="fine" id="sp-status" role="status" aria-live="polite"></p>
+        </form>
+        <div class="reveal">
+          <p class="fine">Preview of your certificate</p>
+          <article class="certificate" aria-label="Certificate preview">
+            <p class="cert-kicker">StrawCycle field certificate</p>
+            <h3 id="pv-name">Your name</h3>
+            <p><span id="pv-rai">1 rai</span> of rice field in <span id="pv-province">Chiang Rai</span> kept from being burned.</p>
+            <p class="fine">The field ID and date are added at checkout. Demo certificate.</p>
+          </article>
         </div>
       </div>
     </section>
-    <section class="section" id="home-pack" aria-labelledby="home-pack-title" data-fill="task-6">
+    <section class="section" id="home-pack" aria-labelledby="home-pack-title">
       <div class="wrap">
-        <div class="placeholder reveal">
-          <h2 id="home-pack-title">A home pack of meal boxes</h2>
-          <p>The home pack is added in a later step.</p>
-        </div>
+        <article class="card reveal pack">
+          <h2 id="home-pack-title">Or take a home pack of meal boxes</h2>
+          <p>50 straw meal boxes for your own kitchen, <span class="num">฿249</span>. Same fibre, same farmers, no fire.</p>
+          <button class="btn btn-primary" id="pack-add" type="button">Add the home pack, ฿249</button>
+        </article>
       </div>
     </section>
-    <section class="section" id="where" aria-labelledby="where-title" data-fill="task-6">
+    <section class="section" id="where" aria-labelledby="where-title">
       <div class="wrap">
-        <div class="placeholder reveal">
+        <div class="section-head reveal">
           <h2 id="where-title">Where your ฿99 goes</h2>
-          <p>A short explainer, from farmer to field, is added in a later step.</p>
         </div>
+        <ol class="steps reveal">
+          <li>A farmer is paid by the kilo for the straw left after harvest.</li>
+          <li>The straw is collected from the field instead of being lit.</li>
+          <li>The field is not burned, and the straw becomes packaging.</li>
+        </ol>
       </div>
     </section>
   </main>
@@ -83,5 +116,6 @@
   </footer>
 
   <script type="module" src="app.js"></script>
+  <script type="module" src="sponsor.js"></script>
 </body>
 </html>
