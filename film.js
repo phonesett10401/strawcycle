@@ -8,14 +8,18 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const smooth = (a, b, x) => { const u = clamp01((x - a) / (b - a)); return u * u * (3 - 2 * u); };
 let THREE;
 
-// Counters: illustrative story figures ticking on the page clock, in film and fallback alike.
+// ?film=video: the video tool owns the frames. No MSAA (its resolve is not bit-exact between identical
+// frames) and no speed check; frames come only from window.scFilm.render(p, t).
+const VIDEO = new URLSearchParams(location.search).get('film') === 'video';
+
+// Counters: illustrative story figures that follow the same t as the scene (film loop, scFilm.render, or the
+// stills-mode clock), so a captured frame shows the counters for its own t.
 const fmt = new Intl.NumberFormat('en-US');
 const counters = [...document.querySelectorAll('[data-counter]')];
-const tick = () => counters.forEach((c) => {
-  const v = fmt.format(counter(+c.dataset.counter, +c.dataset.rate, performance.now() / 1000));
+const tick = (t) => counters.forEach((c) => {
+  const v = fmt.format(counter(+c.dataset.counter, +c.dataset.rate, t));
   if (c.textContent !== v) c.textContent = v;
 });
-if (counters.length) setInterval(tick, 250);
 
 // ---- shaders --------------------------------------------------------------------------------
 const HEAD = /* glsl */`
@@ -75,20 +79,21 @@ void main() {
   float hf = aSeed.w, h = hf * uS;  // height follows the smoke amount, so the fall is the rise run backwards
   vec3 p = position;
   p.y += 0.6 + h * 19.0 + sin(uT * 0.35 + aSeed.z * 6.28) * 0.4 * uS;
-  p.x += (aSeed.x - 0.5) * h * 12.0 + h * h * 12.0 + sin(uT * 0.22 + aSeed.y * 6.28) * 0.6 * uS;
-  p.z += (aSeed.y - 0.5) * h * 8.0;
+  float wide = 0.6 + h * h * 9.0;  // a narrow column that billows out as it climbs, leaning with the wind
+  p.x += (aSeed.x - 0.5) * wide + h * h * 10.0 + sin(uT * 0.22 + aSeed.y * 6.28 + hf * 4.0) * 0.5 * uS;
+  p.z += (aSeed.y - 0.5) * wide * 0.6;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = psize(2.4 + h * 13.0, mv);
-  vA = uS * 0.55 * (1.0 - 0.5 * hf);
-  vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.0, 0.5, hf));
+  gl_PointSize = psize(1.6 + h * 9.0, mv);
+  vA = uS * 0.5 * (1.0 - 0.6 * hf);
+  vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.0, 0.35, hf));
 }`;
 
 const FIBRE = /* glsl */`
-attribute vec3 aStart; uniform float uFold, uFibA; uniform vec3 uC;
+attribute vec3 aStart; uniform float uFold, uFibA, uFibOut; uniform vec3 uC;
 varying float vA, vAng;
 void main() {
-  float u = clamp((uFold - aSeed.x * 0.35) / 0.65, 0.0, 1.0), e = u * u * (3.0 - 2.0 * u);
+  float u = clamp((uFold - aSeed.x * 0.3) / 0.55, 0.0, 1.0), e = u * u * (3.0 - 2.0 * u);
   float a = aSeed.z * 6.28 + e * 9.0 + uT * 0.8;  // the vortex keeps turning while the scroll rests
   float rad = 1.2 + aSeed.y * 2.4;  // a hollow funnel, wider at the top
   vec3 mid = uC + vec3(cos(a) * rad, (aSeed.y - 0.5) * 2.6 + 0.6, sin(a) * rad);
@@ -99,7 +104,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
   float w = 4.0 * e * (1.0 - e);
   gl_PointSize = psize(0.3 + 0.15 * w, mv);
-  vA = uFibA * (0.3 + 0.3 * w) * (1.0 - 0.5 * e) * (1.0 - smoothstep(0.84, 1.0, uFold));
+  vA = uFibA * (0.26 + 0.3 * w) * (1.0 - 0.72 * e) * (1.0 - uFibOut);  // settled fibres stay as a glowing outline
   vAng = aSeed.w * 6.28 + e * 4.0 + uT * 0.6 * w;
 }`;
 const FIBRE_F = /* glsl */`
@@ -192,11 +197,11 @@ function sampleSurface(r) {                           // a point on the box, bow
   let p;
   if (o === 0) {                                      // box surface: pick a face by its area
     const S = [1.1, 0.45, 0.8], A = [0.45 * 0.8, 1.1 * 0.8, 1.1 * 0.45], f = r() * (A[0] + A[1] + A[2]);
-    const ax = f < A[0] ? 0 : f < A[0] + A[1] ? 1 : 2;
-    p = S.map((s, i) => (i === ax ? (r() < 0.5 ? -0.5 : 0.5) : r() - 0.5) * s);
+    const ax = f < A[0] ? 0 : f < A[0] + A[1] ? 1 : 2, edge = r() < 0.45, free = Math.floor(r() * 3);  // edges outline the box
+    p = S.map((s, i) => ((edge ? i !== free : i === ax) ? (r() < 0.5 ? -0.5 : 0.5) : r() - 0.5) * s);
     p[1] += 0.225;
-  } else if (o === 1) { const y = 0.4 * r() ** 0.7, rr = bowlR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
-  else if (r() < 0.2) { const rr = Math.sqrt(r()) * 0.34; p = [Math.cos(a) * rr, 0.78, Math.sin(a) * rr]; }
+  } else if (o === 1) { const y = r() < 0.35 ? 0.4 : 0.4 * r() ** 0.7, rr = bowlR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
+  else if (r() < 0.3) { const rr = r() < 0.6 ? 0.34 : Math.sqrt(r()) * 0.34; p = [Math.cos(a) * rr, 0.78, Math.sin(a) * rr]; }
   else { const y = 0.75 * r(), rr = cupR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
   return p.map((v, i) => v + OBJ[o].at[i]);
 }
@@ -205,9 +210,12 @@ const col = (r, g, b) => new THREE.Color(r, g, b);
 
 export function start(canvas) {
   THREE.ColorManagement.enabled = false;             // colours below are written as they should look
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !VIDEO, powerPreference: 'high-performance' });
+  try { return build(canvas, renderer); } catch (e) { renderer.dispose(); renderer.forceContextLoss(); throw e; }
+}
+
+function build(canvas, renderer) {
   const small = innerWidth < 768, n = (x) => (small ? x >> 1 : x);
-  // no MSAA: its resolve is not bit-exact between identical frames, and frames must repeat exactly for the video
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   const scene = new THREE.Scene();
@@ -216,7 +224,7 @@ export function start(canvas) {
 
   const U = {
     uT: { value: 0 }, uScale: { value: 1 }, uPR: { value: 1 }, uDust: { value: 0 }, uFire: { value: 0 }, uEmber: { value: 0 },
-    uRise: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
+    uRise: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
     uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 },
     uFA: { value: OBJ.map(() => new THREE.Vector3()) }, uFM: { value: OBJ.map(() => new THREE.Vector3()) }, uFE: { value: OBJ.map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
     uSmokeLow: { value: col(0.5, 0.3, 0.2) }, uSmokeHigh: { value: col(0.5, 0.48, 0.48) },
@@ -302,7 +310,8 @@ export function start(canvas) {
   const onFire = (r) => { const f = FIRES[Math.floor(r() * FIRES.length)], k = r(); return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; };
   const flames = points(n(1400), 5, (r) => { const p = onFire(r); p[1] = groundH(p[0], p[2]); return p; }, FLAME);
   const embers = points(n(700), 6, onFire, EMBER);
-  const smoke = points(n(320), 7, onFire, SMOKE, SOFT, THREE.NormalBlending);
+  const COLS = (() => { const r = rng(13); return FIRES.flatMap((f) => [0.3, 0.75].map((k) => { k += (r() - 0.5) * 0.2; return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; })); })();
+  const smoke = points(n(360), 7, (r) => { const c = COLS[Math.floor(r() * COLS.length)]; return [c[0] + (r() - 0.5) * 0.8, 0, c[2] + (r() - 0.5) * 0.8]; }, SMOKE, SOFT, THREE.NormalBlending);  // ten columns
 
   // Straw fibres: scattered on the field (rng(1)), swirl up, fold into the box, bowl and cup
   const fibres = points(n(3000), 8, (r) => sampleSurface(r), FIBRE, FIBRE_F);
@@ -364,12 +373,12 @@ export function start(canvas) {
   const sun = new THREE.DirectionalLight(0xffffff, 1); scene.add(sun);
   const fill = new THREE.DirectionalLight(0x8090c0, 0.25); fill.position.set(0, 10, 30); scene.add(fill);
   const fireLight = new THREE.PointLight(0xff6a20, 0, 30, 1); fireLight.position.set(0, 1.2, -18); scene.add(fireLight);
-  const packLight = new THREE.PointLight(0xffc27a, 0, 10, 1); packLight.position.set(C[0] - 1, C[1] + 2.5, C[2] + 3); scene.add(packLight);
+  const packLight = new THREE.PointLight(0xffc27a, 0, 16, 1); packLight.position.set(C[0] - 1, C[1] + 2.5, C[2] + 3); scene.add(packLight);
   const cafeLight = new THREE.PointLight(0xffb060, 0, 12, 1); cafeLight.position.set(0, 2.8, TABLE[2]); scene.add(cafeLight);
 
   // Colours of the evening
   const H_WARM = col(1, 0.56, 0.26), H_DUSK = col(0.3, 0.4, 0.54), H_NIGHT = col(0.09, 0.12, 0.2);
-  const Z_DUSK = col(0.13, 0.2, 0.38), Z_NIGHT = col(0.03, 0.055, 0.12), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.24, 0.2, 0.19), SMOKE_LIT = col(0.62, 0.33, 0.17), MOON = col(0.4, 0.5, 0.8), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
+  const Z_DUSK = col(0.13, 0.2, 0.38), Z_NIGHT = col(0.03, 0.055, 0.12), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.4, 0.35, 0.33), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.4, 0.5, 0.8), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
   const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3();
 
   function render(p, t) {
@@ -387,9 +396,9 @@ export function start(canvas) {
     ridges[0].material.color.copy(horizon).lerp(Z_NIGHT, 0.5);
     ridges[1].material.color.copy(horizon).lerp(Z_NIGHT, 0.28);
 
-    hemi.color.copy(horizon).lerp(zenith, 0.35); hemi.intensity = 0.7 + 0.5 * sunW;
+    hemi.color.copy(horizon).lerp(zenith, 0.35).lerp(MOON, 0.35 * (1 - sunW)); hemi.intensity = 0.7 + 0.5 * sunW;
     sun.position.copy(sunDir).multiplyScalar(50); sun.color.copy(H_WARM); sun.intensity = 1.4 * sunW;
-    fill.color.lerpColors(MOON, WARM_FILL, sunW); fill.intensity = 0.55 * sunW + 0.5 * (1 - sunW);
+    fill.color.lerpColors(MOON, WARM_FILL, sunW); fill.intensity = 0.55 * sunW + 0.7 * (1 - sunW);
     fireLight.intensity = 9 * P.fire; cafeLight.intensity = 5 * P.city;
 
     U.uT.value = t;
@@ -397,15 +406,15 @@ export function start(canvas) {
     U.uFire.value = P.fire; U.uS.value = Math.max(P.smoke, 0.5 * P.fire); U.uEmber.value = Math.max(P.fire, 0.8 * P.smoke);
     U.uRise.value = smooth(0.2, 0.37, q) - smooth(0.37, 0.5, q);
     U.uSmokeHigh.value.copy(HAZE).multiplyScalar(0.55 + 0.5 * sunW); U.uSmokeLow.value.lerpColors(SMOKE_DARK, SMOKE_LIT, P.fire);
-    U.uFold.value = P.fold; U.uFibA.value = smooth(0.42, 0.52, q);
+    U.uFold.value = P.fold; U.uFibA.value = smooth(0.42, 0.52, q); U.uFibOut.value = smooth(0.72, 0.77, q);
     U.uLantern.value = (0.5 + 0.5 * (1 - sunW)) * (1 - smooth(0.6, 0.75, q));
     U.uBulbs.value = P.city; U.uCity.value = P.city;
     U.uStars.value = smooth(0.42, 0.62, q) * P.clear * (1 - 0.5 * P.city);
     flames.visible = embers.visible = P.fire > 0.001 || P.smoke > 0.001;
-    smoke.visible = U.uS.value > 0.001; fibres.visible = U.uFibA.value > 0.001 && P.fold < 1;
+    smoke.visible = U.uS.value > 0.001; fibres.visible = U.uFibA.value > 0.001 && U.uFibOut.value < 1;
 
     const form = smooth(0.8, 1, P.fold);
-    U.uHalo.value = form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = 4 * form * (1 - P.city);
+    U.uHalo.value = form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
     packMats.forEach((m) => { m.opacity = form; });
     pack.forEach((g, i) => {
       const o = OBJ[i], e = clamp01((P.fly - i * 0.08) / 0.84) ** 2.2;  // slow start keeps them just ahead of the camera
@@ -444,12 +453,17 @@ export function start(canvas) {
 }
 
 // ---- page wiring ----------------------------------------------------------------------------
-function fallback() { window.scStills(); root.classList.remove('film'); delete window.scFilm; }
+let clock = 0;
+function fallback() {
+  window.scStills(); root.classList.remove('film'); delete window.scFilm;
+  if (!clock && counters.length) clock = setInterval(() => tick(performance.now() / 1000), 250);  // stills mode has no frame loop
+}
 
 async function boot() {
   const canvas = document.getElementById('film');
-  const probe = document.createElement('canvas');
-  const webgl = !!(probe.getContext('webgl2') || probe.getContext('webgl'));
+  const probe = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
+  const webgl = !!probe;
+  probe?.getExtension('WEBGL_lose_context')?.loseContext();  // free the probe's context at once
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (!canvas || !webgl || reducedMotion || root.classList.contains('no-film') || new URLSearchParams(location.search).get('film') === 'off') return fallback();
 
@@ -471,10 +485,11 @@ async function boot() {
     raf = requestAnimationFrame(frame);
     const dt = last ? now - last : 16; last = now;
     shown += (target() - shown) * (1 - Math.exp(-dt / 120));  // a little damping on wheel steps
-    film.render(shown, (now - t0) / 1000);
+    const t = (now - t0) / 1000;
+    film.render(shown, t); tick(t);
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
-      if (frameMs.length === 30) { if (shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else stop(); }
+      if (frameMs.length === 30) { if (VIDEO || shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else stop(); }
     }
   }
   const onResize = () => { film.resize(); measure(); };
@@ -483,7 +498,9 @@ async function boot() {
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
   canvas.addEventListener('webglcontextlost', onLost);
   measure(); shown = target();
-  window.scFilm = { render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); } }; // manual frames stop the scroll loop
-  raf = requestAnimationFrame(frame);
+  // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
+  // with ?film=video for capture (see VIDEO above).
+  window.scFilm = { render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
+  if (VIDEO) root.classList.add('film'); else raf = requestAnimationFrame(frame);
 }
 boot();

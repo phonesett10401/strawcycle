@@ -27,7 +27,7 @@ const KEYS = [
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
   [1.5, 6.5, -3, 0, 2, -16],        // above the field, smoke gone, straw lifting
   [-1, 3.6, -7.5, 0, 2.7, -14.5],   // close on the box, bowl and cup
-  [0, 2.6, -37, 0, 1.3, -44],       // the café table, city lights beyond
+  [0, 1.95, -39.4, 0, 0.95, -44.5],  // the café table, city lights beyond
 ];
 
 function catmull(a, b, c, d, u) {
