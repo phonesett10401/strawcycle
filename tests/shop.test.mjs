@@ -91,3 +91,32 @@ test('saveBag then loadBag round trip', () => {
   S.saveBag(st, bag);
   assert.deepEqual(S.loadBag(st), bag);
 });
+test('loadBag rejects names that would need cleaning, never repairs', () => {
+  const st = (v) => ({ getItem: () => v });
+  for (const name of [' Ann ', 'Ann  Lee', 'x'.repeat(41), 123, {}])
+    assert.deepEqual(S.loadBag(st(JSON.stringify([{ kind: 'sponsor', key: 'k', rai: 1, province: 'Nan', name }]))), [], String(name));
+  assert.equal(S.loadBag(st('[{"kind":"sponsor","key":"k","rai":1,"province":"Nan","name":" Ann "}]')).length, 0);
+  assert.equal(S.loadBag(st('[{"kind":"sponsor","key":"k","rai":1,"province":"Nan","name":"Ann"}]')).length, 1);
+});
+test('addPack clamps quantity before adding', () => {
+  const base = S.addPack([]);
+  assert.equal(S.addPack(base, '2')[0].qty, 3);
+  assert.equal(S.addPack(base, 0)[0].qty, 2);
+  assert.equal(S.addPack(base, NaN)[0].qty, 2);
+  assert.equal(S.addPack(base, 2.7)[0].qty, 3);
+});
+test('setCartons keeps line order', () => {
+  const bag = S.addProduct(S.addProduct(S.addProduct([], 'bowl', 2), 'cup', 3), 'meal-box', 4);
+  const out = S.setCartons(bag, 'cup', false, 5);
+  assert.deepEqual(out.map((l) => l.id), ['bowl', 'cup', 'meal-box']);
+  assert.equal(out[1].cartons, 5);
+  const logo = S.addProduct(S.addProduct(S.addProduct([], 'bowl', 2), 'cup', 12, true), 'meal-box', 1);
+  assert.deepEqual(S.setCartons(logo, 'cup', true, 11).map((l) => l.id), ['bowl', 'cup', 'meal-box']);
+  const dropped = S.setCartons(logo, 'cup', true, 9);
+  assert.deepEqual(dropped.map((l) => l.id), ['bowl', 'cup', 'meal-box']);
+  assert.deepEqual(dropped[1], { kind: 'product', id: 'cup', cartons: 9, logo: false });
+  const plainFirst = [{ kind: 'product', id: 'bowl', cartons: 2, logo: false }, { kind: 'product', id: 'cup', cartons: 2, logo: false }, { kind: 'product', id: 'cup', cartons: 12, logo: true }, { kind: 'product', id: 'meal-box', cartons: 1, logo: false }];
+  const merged = S.setCartons(plainFirst, 'cup', true, 9);
+  assert.deepEqual(merged.map((l) => l.id), ['bowl', 'cup', 'meal-box']);
+  assert.deepEqual(merged[1], { kind: 'product', id: 'cup', cartons: 11, logo: false });
+});

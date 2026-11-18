@@ -89,14 +89,26 @@ export function addProduct(bag, id, cartons, logo) {
 
 // Remove the logo line, then add it back with the new count (merges if a plain line exists).
 export function setCartons(bag, id, logo, cartons) {
-  const rest = bag.filter((x) => !(x.kind === 'product' && x.id === id && x.logo === Boolean(logo)));
-  return addProduct(rest, id, cartons, logo);
+  product(id);
+  const c = clampCartons(cartons);
+  const i = bag.findIndex((x) => x.kind === 'product' && x.id === id && x.logo === Boolean(logo));
+  if (i < 0) return addProduct(bag, id, cartons, logo);
+  if ((Boolean(logo) && c >= LOGO_MIN_CARTONS) === Boolean(logo)) {
+    return bag.map((x, j) => (j === i ? { ...x, cartons: c } : x));
+  }
+  // Logo dropped: fold into the plain line if there is one, else keep this line's place.
+  const plain = bag.findIndex((x) => x.kind === 'product' && x.id === id && x.logo === false);
+  if (plain < 0) return bag.map((x, j) => (j === i ? { ...x, cartons: c, logo: false } : x));
+  return bag
+    .map((x, j) => (j === plain ? { ...x, cartons: clampCartons(x.cartons + c) } : x))
+    .filter((_, j) => j !== i);
 }
 
 export function addPack(bag, qty = 1) {
+  const q = clampCartons(qty);
   const i = bag.findIndex((x) => x.kind === 'pack');
-  if (i < 0) return [...bag, { kind: 'pack', qty: clampCartons(qty) }];
-  return bag.map((x, j) => (j === i ? { ...x, qty: clampCartons(x.qty + qty) } : x));
+  if (i < 0) return [...bag, { kind: 'pack', qty: q }];
+  return bag.map((x, j) => (j === i ? { ...x, qty: clampCartons(x.qty + q) } : x));
 }
 
 export function addSponsor(bag, rai, province, name, key) {
@@ -191,6 +203,7 @@ function checkLine(l) {
   }
   if (l?.kind === 'sponsor') {
     if (typeof l.key !== 'string') throw new Error('bad sponsor key');
+    if (typeof l.name !== 'string' || cleanName(l.name) !== l.name) throw new Error('name needs cleaning');
     return addSponsor([], l.rai, l.province, l.name, l.key)[0];
   }
   throw new Error('unknown line');
