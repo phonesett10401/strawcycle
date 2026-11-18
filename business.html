@@ -42,27 +42,146 @@
       </div>
     </section>
 
-    <section class="section" id="products" aria-labelledby="products-title" data-fill="task-5">
+    <section class="section" id="products" aria-labelledby="products-title">
       <div class="wrap">
-        <div class="placeholder reveal">
+        <div class="section-head reveal">
           <h2 id="products-title">Five products, sold by the carton</h2>
-          <p>Meal boxes, bowls, cups, carry bags and cutlery, with live bulk pricing, are added in a later step.</p>
+          <p>Prices are per piece and fall as you order more. Pick your cartons and the total updates.</p>
+        </div>
+        <div class="product-grid reveal">
+        <article class="card product" data-product="meal-box">
+          <h3>Meal box, 750 ml</h3>
+          <p class="price-row"><span class="piece num">฿3.20</span> per piece <span class="sep" aria-hidden="true">·</span> <span class="per-carton num">300 per carton</span></p>
+          <div class="field">
+            <label for="c-meal-box">Cartons</label>
+            <input id="c-meal-box" name="cartons" type="number" inputmode="numeric" min="1" max="999" step="1" value="1">
+          </div>
+          <div class="check">
+            <label><input type="checkbox" name="logo" disabled> Print my logo</label>
+            <span class="fine">Logo printing from 10 cartons</span>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <output class="line num">฿960</output></p>
+          <output class="saving num" hidden></output>
+          <p class="fine quote-hint" hidden>Over 100 cartons? <a href="#quote">Ask for a quote</a></p>
+          <button class="btn btn-primary add" type="button">Add to bag</button>
+        </article>
+        <article class="card product" data-product="bowl">
+          <h3>Bowl, 500 ml</h3>
+          <p class="price-row"><span class="piece num">฿2.40</span> per piece <span class="sep" aria-hidden="true">·</span> <span class="per-carton num">500 per carton</span></p>
+          <div class="field">
+            <label for="c-bowl">Cartons</label>
+            <input id="c-bowl" name="cartons" type="number" inputmode="numeric" min="1" max="999" step="1" value="1">
+          </div>
+          <div class="check">
+            <label><input type="checkbox" name="logo" disabled> Print my logo</label>
+            <span class="fine">Logo printing from 10 cartons</span>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <output class="line num">฿1,200</output></p>
+          <output class="saving num" hidden></output>
+          <p class="fine quote-hint" hidden>Over 100 cartons? <a href="#quote">Ask for a quote</a></p>
+          <button class="btn btn-primary add" type="button">Add to bag</button>
+        </article>
+        <article class="card product" data-product="cup">
+          <h3>Hot cup, 12 oz, with lid</h3>
+          <p class="price-row"><span class="piece num">฿1.90</span> per piece <span class="sep" aria-hidden="true">·</span> <span class="per-carton num">1,000 per carton</span></p>
+          <div class="field">
+            <label for="c-cup">Cartons</label>
+            <input id="c-cup" name="cartons" type="number" inputmode="numeric" min="1" max="999" step="1" value="1">
+          </div>
+          <div class="check">
+            <label><input type="checkbox" name="logo" disabled> Print my logo</label>
+            <span class="fine">Logo printing from 10 cartons</span>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <output class="line num">฿1,900</output></p>
+          <output class="saving num" hidden></output>
+          <p class="fine quote-hint" hidden>Over 100 cartons? <a href="#quote">Ask for a quote</a></p>
+          <button class="btn btn-primary add" type="button">Add to bag</button>
+        </article>
+        <article class="card product" data-product="bag">
+          <h3>Carry bag</h3>
+          <p class="price-row"><span class="piece num">฿2.80</span> per piece <span class="sep" aria-hidden="true">·</span> <span class="per-carton num">500 per carton</span></p>
+          <div class="field">
+            <label for="c-bag">Cartons</label>
+            <input id="c-bag" name="cartons" type="number" inputmode="numeric" min="1" max="999" step="1" value="1">
+          </div>
+          <div class="check">
+            <label><input type="checkbox" name="logo" disabled> Print my logo</label>
+            <span class="fine">Logo printing from 10 cartons</span>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <output class="line num">฿1,400</output></p>
+          <output class="saving num" hidden></output>
+          <p class="fine quote-hint" hidden>Over 100 cartons? <a href="#quote">Ask for a quote</a></p>
+          <button class="btn btn-primary add" type="button">Add to bag</button>
+        </article>
+        <article class="card product" data-product="cutlery">
+          <h3>Cutlery set (fork, spoon, knife)</h3>
+          <p class="price-row"><span class="piece num">฿1.20</span> per piece <span class="sep" aria-hidden="true">·</span> <span class="per-carton num">1,000 per carton</span></p>
+          <div class="field">
+            <label for="c-cutlery">Cartons</label>
+            <input id="c-cutlery" name="cartons" type="number" inputmode="numeric" min="1" max="999" step="1" value="1">
+          </div>
+          <div class="check">
+            <label><input type="checkbox" name="logo" disabled> Print my logo</label>
+            <span class="fine">Logo printing from 10 cartons</span>
+          </div>
+          <p class="total-row"><span class="fine">Total</span> <output class="line num">฿1,200</output></p>
+          <output class="saving num" hidden></output>
+          <p class="fine quote-hint" hidden>Over 100 cartons? <a href="#quote">Ask for a quote</a></p>
+          <button class="btn btn-primary add" type="button">Add to bag</button>
+        </article>
+        </div>
+        <div class="tiers reveal">
+          <h3>Bulk prices</h3>
+          <table>
+            <thead><tr><th scope="col">Cartons</th><th scope="col">Price</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">1 to 4</th><td>List price</td></tr>
+              <tr><th scope="row">5 to 19</th><td>10% off</td></tr>
+              <tr><th scope="row">20 or more</th><td>18% off</td></tr>
+            </tbody>
+          </table>
+          <p class="fine">Your logo printed on the packaging: +฿0.50 per piece, from 10 cartons.</p>
         </div>
       </div>
     </section>
-    <section class="section" id="partner" aria-labelledby="partner-title" data-fill="task-5">
-      <div class="wrap">
-        <div class="placeholder reveal">
+    <section class="section" id="partner" aria-labelledby="partner-title">
+      <div class="wrap partner">
+        <div class="reveal">
           <h2 id="partner-title">The partner sticker for your window</h2>
-          <p>The window sticker and its example counter are added in a later step.</p>
+          <p>Every business that buys from StrawCycle gets a window sticker showing the rai of field it has kept from burning.</p>
         </div>
+        <figure class="sticker-fig reveal">
+          <div class="sticker" role="img" aria-label="Window sticker: StrawCycle Partner, 12 rai saved from burning">
+            <span class="sticker-kicker">StrawCycle Partner</span>
+            <span class="sticker-num num">12</span>
+            <span class="sticker-line">rai saved from burning</span>
+          </div>
+          <figcaption class="fine">Example: a busy café a year in, about 1,000 boxes a day</figcaption>
+        </figure>
       </div>
     </section>
-    <section class="section" id="samples" aria-labelledby="samples-title" data-fill="task-5">
-      <div class="wrap">
-        <div class="placeholder reveal">
-          <h2 id="samples-title">Free samples and quotes</h2>
-          <p>The sample box form and the quote form are added in a later step.</p>
+    <section class="section" id="samples" aria-labelledby="samples-title">
+      <div class="wrap forms">
+        <div class="reveal">
+          <h2 id="samples-title">Free sample box</h2>
+          <p class="demo-tag">Demo form, nothing is sent</p>
+          <form data-demo-form="sample" novalidate>
+            <div class="field"><label for="s-business">Business name</label><input id="s-business" name="business" type="text" autocomplete="organization" required></div>
+            <div class="field"><label for="s-type">Type of business</label><select id="s-type" name="type"><option>Restaurant</option><option>Café</option><option>Hotel</option><option>Office</option><option>Other</option></select></div>
+            <div class="field"><label for="s-district">District</label><input id="s-district" name="district" type="text" autocomplete="address-level2" required></div>
+            <div class="field"><label for="s-email">Email</label><input id="s-email" name="email" type="email" autocomplete="email" required></div>
+            <button class="btn btn-primary" type="submit">Request a sample box</button>
+          </form>
+        </div>
+        <div class="reveal" id="quote">
+          <h2 id="quote-title">Ask for a quote</h2>
+          <p class="demo-tag">Demo form, nothing is sent</p>
+          <form data-demo-form="quote" novalidate aria-labelledby="quote-title">
+            <div class="field"><label for="q-business">Business name</label><input id="q-business" name="business" type="text" autocomplete="organization" required></div>
+            <div class="field"><label for="q-email">Email</label><input id="q-email" name="email" type="email" autocomplete="email" required></div>
+            <div class="field"><label for="q-need">What you need</label><textarea id="q-need" name="need" rows="4" required></textarea></div>
+            <button class="btn btn-primary" type="submit">Ask for a quote</button>
+          </form>
         </div>
       </div>
     </section>
@@ -83,5 +202,6 @@
   </footer>
 
   <script type="module" src="app.js"></script>
+  <script type="module" src="business.js"></script>
 </body>
 </html>
