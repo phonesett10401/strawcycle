@@ -20,6 +20,7 @@ const TIER = TIERS[FLAGS.tier || pickTier({
 
 // Counters: illustrative story figures that follow the same t as the scene (film loop, scFilm.render, or the
 // stills-mode clock), so a captured frame shows the counters for its own t.
+const LOW_EXPOSURE = 1.25, POST_EXPOSURE = 1.25;
 const fmt = new Intl.NumberFormat('en-US');
 const counters = [...document.querySelectorAll('[data-counter]')];
 const tick = (t) => counters.forEach((c) => {
@@ -222,7 +223,7 @@ export function start(canvas, tier = TIER) {
     let cur = build(canvas, renderer, tier);
     const film = {
       renderer, tier,
-      render: (p, t) => cur.render(p, t), resize: (force) => cur.resize(force),
+      render: (p, t) => cur.render(p, t), resize: (force) => cur.resize(force), attachPost: (m) => { if (film.tier.post) cur.attachPost(m); },  // a late import must not attach after a step down
       // Step down to another tier: rebuild the scene with that tier's counts on the same renderer (one-time hitch).
       setTier(next) { cur.dispose(true); cur = build(canvas, renderer, next); film.tier = next; },
       dispose: () => cur.dispose(),
@@ -236,6 +237,10 @@ function build(canvas, renderer, tier) {
   const small = tier.name === 'low' && innerWidth < 768, n = (x) => (small ? x >> 1 : Math.round(x * tier.density));
   renderer.setPixelRatio(tier.dpr === null ? devicePixelRatio : Math.min(devicePixelRatio, tier.dpr));
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  // Filmic tone mapping everywhere: the composer's OutputPass applies it on High/Ultra, the renderer on Low and
+  // while post is not loaded (or failed). Low gets a little more exposure so ACES does not make it darker than v1.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = tier.post ? POST_EXPOSURE : LOW_EXPOSURE;
+  let post = null;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 500);
   scene.fog = new THREE.Fog(0, 18, 140);
@@ -397,7 +402,7 @@ function build(canvas, renderer, tier) {
   // Colours of the evening
   const H_WARM = col(1, 0.56, 0.26), H_DUSK = col(0.3, 0.4, 0.54), H_NIGHT = col(0.09, 0.12, 0.2);
   const Z_DUSK = col(0.13, 0.2, 0.38), Z_NIGHT = col(0.03, 0.055, 0.12), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.4, 0.35, 0.33), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.4, 0.5, 0.8), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
-  const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3();
+  const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3(), sv = new THREE.Vector3(), fwd = new THREE.Vector3();
 
   function render(p, t) {
     const q = clamp01(p), P = params(q, t), sunW = smooth(0.35, 1, P.sun), night = smooth(0.55, 0.9, q);
@@ -449,7 +454,20 @@ function build(canvas, renderer, tier) {
     city.visible = P.city > 0.001; city.position.y = -((1 - P.city) ** 2) * 16;
     cafe.visible = P.city > 0.001; cafeMats.forEach((m) => { m.opacity = P.city; });
 
-    renderer.render(scene, camera);
+    if (!post) return renderer.render(scene, camera);
+    // The v1 sun, projected with the camera (uv); facing fades the rays out when the sun is behind the view.
+    camera.updateMatrixWorld();
+    sv.copy(sunDir).multiplyScalar(50).add(camera.position).project(camera);
+    post.render({
+      sunScreen: [sv.x * 0.5 + 0.5, sv.y * 0.5 + 0.5], sun: P.sun, smoke: P.smoke,
+      glow: Math.max(P.fire, P.city, form), facing: smooth(0, 0.3, camera.getWorldDirection(fwd).dot(sunDir)),
+    });
+  }
+
+  // Called once post.js has loaded (High/Ultra); the new pipeline takes over from the plain renderer.render.
+  function attachPost(mod) {
+    post = mod.createPost(THREE, renderer, scene, camera, tier);
+    resize(true);
   }
 
   function resize(force) {
@@ -460,17 +478,19 @@ function build(canvas, renderer, tier) {
     camera.aspect = w / h; camera.fov = w < h ? 62 : 48; camera.updateProjectionMatrix();
     const b = renderer.getDrawingBufferSize(new THREE.Vector2());
     U.uScale.value = b.y / (2 * Math.tan(camera.fov * Math.PI / 360)); U.uPR.value = renderer.getPixelRatio();
+    post?.resize(w, h, renderer.getPixelRatio());
   }
   resize();
 
   function dispose(keepRenderer) {
+    post?.dispose(); post = null;
     scene.traverse((o) => {
       o.geometry?.dispose(); [].concat(o.material || []).forEach((m) => m.dispose());
       if (o.isInstancedMesh) o.dispose();  // frees instanceMatrix / instanceColor buffers
     });
     if (!keepRenderer) { renderer.dispose(); renderer.forceContextLoss(); }  // hand the GPU context back at once
   }
-  return { render, dispose, resize, renderer };
+  return { render, dispose, resize, attachPost, renderer };
 }
 
 // ---- page wiring ----------------------------------------------------------------------------
@@ -491,6 +511,13 @@ async function boot() {
   let film;
   try { THREE = await import('three'); film = start(canvas); } catch (e) { console.warn('film off:', e); film?.dispose(); return fallback(); }
   if (root.classList.contains('no-film')) return (film.dispose(), fallback());  // the 4 s failsafe already chose the stills
+  // Post-processing (High/Ultra) loads after the first plain frame; if it fails, the film keeps plain rendering
+  // with tone mapping. Video, bench and fixed renders wait for it so captures include it.
+  let postWarned = false;
+  const loadPost = () => !TIER.post ? 0 : import('./post.js').then((m) => film.attachPost(m)).catch((e) => {
+    if (!postWarned) { postWarned = true; console.warn('film post off:', e); }
+  });
+  const postReady = (VIDEO || BENCH) ? loadPost() : new Promise((r) => requestAnimationFrame(() => r(loadPost())));
 
   const doors = document.getElementById('doors');
   let end = 1, raf = 0, last = 0, manual = false, shown = 0, frames = 0, step = TIER.name === 'low' ? 'low' : 'high';
@@ -546,10 +573,12 @@ async function boot() {
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
   canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
   measure(); shown = target();
+  if (VIDEO || BENCH) await postReady;  // fixed renders and the bench must include post
   document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
   // with ?film=video for capture (see VIDEO above).
-  window.scFilm = { get tier() { return film.tier.name; }, render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
+  window.scFilm = { get tier() { return film.tier.name; }, _degrade: degrade, _memory: () => ({ ...film.renderer.info.memory }),  // _ hooks: console checks of the step-down
+     render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
   if (VIDEO || BENCH) root.classList.add('film');
   if (BENCH) raf = requestAnimationFrame(benchFrame);
   else if (VIDEO) {
