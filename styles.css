@@ -37,7 +37,7 @@
   --dusk-error: oklch(72% 0.16 27); --dusk-shade: oklch(10% 0.03 262 / 0.6);
   --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
   --film-scrim: oklch(14% 0.03 262 / 0.85);
-  --film-text-scrim: oklch(12% 0.03 262 / 0.7); --film-hero-scrim: oklch(12% 0.03 262 / 0.84);  /* the hero sits on the sun glow */
+  --film-text-scrim: oklch(12% 0.03 262 / 0.7);  /* hero shares it: the sun glow sits right of the heading (film.js sky) */
   /* Print: a certificate prints black on white paper */
   --print-paper: oklch(99.5% 0.005 90); --print-ink: oklch(16% 0.02 262); --print-muted: oklch(34% 0.02 262);
 
@@ -429,4 +429,3 @@ html.no-film .beat::after { content: ""; position: absolute; inset: 0; backgroun
   .flow { grid-template-columns: 1fr; gap: var(--space-lg); }
   .flow li + li::before { left: 50%; top: calc(-1 * var(--space-lg)); width: 0; height: var(--space-lg); border-top: 0; border-left: 2px solid var(--color-accent); }
 }
-html.film .page-head--home .wrap::before { background: linear-gradient(to bottom, transparent, var(--film-hero-scrim) 5rem, var(--film-hero-scrim) calc(100% - 5rem), transparent); }
