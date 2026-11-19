@@ -7,6 +7,8 @@ export const PRODUCTS = [
   { id: 'cup', name: 'Hot cup, 12 oz, with lid', perCarton: 1000, satang: 190, grams: 10, estimate: true },
   { id: 'bag', name: 'Carry bag', perCarton: 500, satang: 280, grams: 18, estimate: true },
   { id: 'cutlery', name: 'Cutlery set (fork, spoon, knife)', perCarton: 1000, satang: 120, grams: 6, estimate: true },
+  { id: 'chopsticks', name: 'Chopsticks, pair', perCarton: 1000, satang: 90, grams: 5, estimate: true },
+  { id: 'drinking-straw', name: 'Drinking straw', perCarton: 2000, satang: 35, grams: 1, estimate: true },
 ];
 
 export const LOGO_SATANG = 50;
