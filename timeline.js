@@ -25,9 +25,9 @@ export function sceneAt(p) {
 const KEYS = [
   [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
-  [1.2, 3.6, -3.5, 2.6, 2.4, -16],  // above the field, smoke gone, straw lifting; low enough to keep the horizon, the hut at the frame edge
+  [1.2, 3.6, -3.5, 1.7, 2.4, -16],  // above the field, smoke gone, straw lifting; low enough to keep the horizon, the hut at the frame edge
   [1.0, 0.6, -11.5, -1.7, -0.1, -14.6], // low and close on the box, bowl and cup bedded in the straw, up and right of the caption
-  [0, 2.1, -38.2, 0, 0.9, -43.5],   // the café table whole, the terrace railing and the city falling away beyond
+  [0, 1.95, -39.4, 0, 1.45, -43.5],   // the café table whole, the terrace railing and the city falling away beyond
 ];
 // Portrait screens see a narrow slice: the hut turned into the right third, the packaging and the whole café table
 // pulled back so they fit, the table low in the frame under the doors.
@@ -36,7 +36,7 @@ const KEYS_TALL = [
   [-2, 2.4, 0, -2.4, 4, -24],       // the two nearest smoke columns in the centre of the narrow frame
   [1, 3.2, -3.5, -0.8, 3, -16],
   [0.1, 0.95, -11.2, -0.15, -0.35, -14.6],  // low and close, the pieces in the upper half above the caption
-  [0, 4.6, -35.6, 0, 3.4, -42],    // higher and back: the lit skyline in the band between the buttons and the railing, the table low
+  [0, 3.3, -38.4, 0, 2.15, -42.6],  // tight on the table (lower half), the lit skyline in the band between the buttons and the railing
 ];
 
 function catmull(a, b, c, d, u) {

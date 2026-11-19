@@ -47,6 +47,8 @@ const GRADE = {
     float keep = (1.0 - smoothstep(0.35, 1.2, l)) * (1.0 - smoothstep(0.6, 0.85, sat));  // flames, embers and lit smoke keep their colour
     c.rgb = mix(c.rgb, vec3(l) * vec3(1.04, 0.98, 0.9), 0.6 * uSmoke * keep);    // fire and smoke drain the colour to grey
     c.rgb = mix(c.rgb, vec3(0.46, 0.4, 0.36), 0.22 * uSmoke * keep);              // haze
+    vec3 p3 = fract(vec3(gl_FragCoord.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33);
+    c.rgb *= 1.0 + (fract((p3.x + p3.y) * p3.z) - 0.5) * 0.012;                    // dither: no stepped gradients after tone mapping
     gl_FragColor = c;
   }`,
 };
@@ -78,7 +80,7 @@ export function createPost(THREE, renderer, scene, camera, tier) {
       bloom.strength = bloomBase * (0.7 + 0.3 * u.glow);
       bloom.radius = 0.55 - 0.4 * (u.fire ?? 0);                 // tight around the flames, so they keep their edges
       rays.uniforms.uSun.value = u.sunScreen;
-      rays.uniforms.uAmt.value = 0.35 * u.sun * (u.facing ?? 1);
+      rays.uniforms.uAmt.value = 0.5 * u.sun * (u.facing ?? 1);  // shafts through the dusty air
       grade.uniforms.uSmoke.value = u.smoke;
       composer.render(0);
     },

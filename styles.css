@@ -409,7 +409,7 @@ html.film .page-head--home { align-content: start; }  /* the headline over the u
 html.film .page-head--home .wrap::before { content: none; }  /* the hero has no band: the sky behind the headline stays open; the shadow carries the type */
 html.film .btn-secondary { background: oklch(15% 0.035 25 / 0.55); }  /* ghost buttons get a shaded fill over the film (sun, windows) */
 @media (hover: hover) { html.film .btn-secondary:hover { background: var(--color-ink); } }
-.page-head--home .lead { color: var(--color-ink); text-shadow: 0 0 2px oklch(13% 0.03 30 / 0.9), var(--film-shadow); }  /* the thinnest strokes on the film get one more tight layer */
+.page-head--home .lead { color: var(--color-ink); font-weight: 600; text-shadow: 0 0 2px oklch(13% 0.03 30 / 0.95), 0 0 4px oklch(13% 0.03 30 / 0.6), var(--film-shadow); }  /* the thinnest strokes on the film get one more tight layer */
 .skip-film {
   display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
   color: var(--color-ink); font-weight: 600; font-size: var(--text-lg); text-shadow: 0 0 2px oklch(13% 0.03 30 / 0.9), var(--film-shadow);
