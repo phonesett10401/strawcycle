@@ -62,17 +62,35 @@ const BLADES = 24000;                                // field blades at density 
 const C = [0, 2.4, -14];                              // where the straw swirls and folds
 const ROW = 0.3, HILL = 0.22;                         // harvest rows (along z) and the hill spacing along a row
 const HUT = [9.5, 0, -16];                            // right of the hero text, the sun setting behind it
-const TABLE = [0, 0.915, -42];
-const CANDLE = [TABLE[0] - 0.85, TABLE[1], TABLE[2] + 0.72];  // front left of the table, in view (not behind the box)
+const DECK = 0.06;                                    // the terrace floor: cafe.glb's origin sits on it
+const TABLE = [0, DECK + 0.75, -42];                  // the bistro table top, real size (0.70 m across)
+const CANDLE_AT = [-0.2, 0, -0.17];                   // the candle on the table, back left (cafe.glb models it at z 0.13)
+const CANDLE = [TABLE[0] + CANDLE_AT[0], TABLE[1], TABLE[2] + CANDLE_AT[2]];
+// the festoon (wire, bulbs) moved back to the railing, turned across the view and scaled up (big globe bulbs, a long
+// sag) so its ends leave the frame at the top: x, y, z (from the table on the deck), turn, scale
+const LIGHTS_AT = [0, -1.4, -3.4, 0.45, 1.7];
 const FIRES = [[-9, -12, -3, -13], [2, -11, 8, -12.5], [-6, -19, 1, -20], [4, -22, 11, -21], [-12, -25, -5, -27]];
-// box, bowl, cup: where they fold (world), where they land on the table (offset), resting turn
-// (folded at FOLD_S scale, bedded at the stubble roots, so they read as packaging, not furniture)
-const FOLD_S = 0.6;
+// The farmer (farmer.glb): his torch head, (0.33, 0, 1.33) from his feet in the model, rests on the start of a fire
+// line (FIRES[2], lit from its right end: in view on wide and tall screens), and he walks along it. [x, z, turn]
+const FARMER = (() => {
+  const [x1, z1, x0, z0] = FIRES[2], a = Math.atan2(x1 - x0, z1 - z0), c = Math.cos(a), s = Math.sin(a);
+  return [x0 - (0.33 * c + 1.33 * s), z0 - (1.33 * c - 0.33 * s), a];
+})();
+// The packaging forms in the air over the field, just above chest height, and lands on the café table.
+// box, bowl, cup, then fork, spoon, chopsticks (packaging.glb only; the drinking straw stands in the cup).
+// at: where it folds (world); rot: turn in the air; pose: the model's tilt in the air (Euler x, z; cutlery shows
+// its face, angled up); table: where it lands on the table [x, z, turn] (offset from the table centre).
+// v1's procedural box, bowl and cup fold at FOLD_S and land at LAND_S; the real-size models fold at FIELD_S and land at 1.
+const FOLD_S = 0.6, LAND_S = 0.18, FIELD_S = 4;
 const OBJ = [
-  { at: [-0.82, groundH(-0.82, -14), -14], land: [-0.42, 0, 0.1], rot: 0.35 },
-  { at: [0.05, groundH(0.05, -13.7), -13.7], land: [0.5, 0, -0.15], rot: 0 },
-  { at: [0.78, groundH(0.78, -14.05), -14.05], land: [0.12, 0, -0.55], rot: 0 },
+  { at: [-0.95, 1.0, -14], rot: 0.35, pose: [0, 0], table: [-0.08, 0.02, 0.15] },
+  { at: [0.0, 1.0, -13.75], rot: 0, pose: [0, 0], table: [0.1, -0.13, 0] },
+  { at: [0.8, 1.0, -14.05], rot: 0, pose: [0, 0], table: [0.23, -0.02, 0] },
+  { at: [-0.75, 0.55, -13.55], rot: 0, pose: [1.25, 0.55], table: [0, 0.2, 1.9] },
+  { at: [0.05, 0.53, -13.5], rot: 0, pose: [1.25, 0.55], table: [0.09, 0.21, 1.94] },
+  { at: [0.8, 0.57, -13.7], rot: 0, pose: [1.25, 0.55], table: [0.19, 0.12, -1.1] },
 ];
+const PACK_NODES = ['box', 'bowl', 'cup', 'fork', 'spoon', 'chopsticks'];
 const bowlR = (y) => 0.32 + 0.3 * Math.sqrt(y / 0.4);
 const cupR = (y) => 0.21 + 0.11 * y / 0.75;
 function sampleSurface(r) {                           // a point on the box, bowl or cup, in world space at fold time
@@ -119,21 +137,97 @@ function pattern(mat, glsl) {
   return mat;
 }
 
+// ---- models -----------------------------------------------------------------------------------
+// The film works in display colours (ColorManagement off, linear output), so glTF's linear factors and sRGB textures
+// are taken as display values: the factors converted, the textures read raw. Flames become additive (no depth write,
+// brightness set by the film); transmission glass becomes plain tinted transparency with a glow (no transmission pass).
+function prepare(m) {
+  ['color', 'emissive', 'sheenColor'].forEach((k) => m[k]?.convertLinearToSRGB());
+  ['map', 'emissiveMap', 'sheenColorMap'].forEach((k) => { if (m[k]) m[k].colorSpace = THREE.NoColorSpace; });
+  if (m.name.startsWith('flame')) {
+    const base = m.emissive.clone().multiplyScalar(m.emissiveIntensity);
+    const b = new THREE.MeshBasicMaterial({ name: m.name, color: base, map: m.emissiveMap, transparent: true, opacity: m.opacity, side: m.side, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+    b.userData.base = base;
+    return b;
+  }
+  if (!(m.transmission > 0)) return m;
+  const amber = m.name === 'glass';
+  return new THREE.MeshStandardMaterial({ name: m.name, color: amber ? 0xb05a10 : 0xfff4e6, emissive: amber ? 0xd06010 : 0xffc070, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.8, depthWrite: false });
+}
+
+// One-time layout inside a loaded model, so a rebuild after a tier step attaches it again as it is.
+function arrange(name, root) {
+  const swaps = new Map();
+  root.traverse((o) => {
+    if (!o.material) return;
+    if (!swaps.has(o.material)) swaps.set(o.material, prepare(o.material));
+    o.material = swaps.get(o.material);
+  });
+  if (name === 'cafe') {
+    // the candle from the model's front left to CANDLE_AT; the festoon back over the railing, its poles hidden
+    const candle = new THREE.Group(), lights = new THREE.Group();
+    candle.position.set(CANDLE_AT[0] + 0.2, 0, CANDLE_AT[2] - 0.13);
+    candle.add(root.getObjectByName('candle'), root.getObjectByName('candle_flame'));
+    lights.position.set(LIGHTS_AT[0], LIGHTS_AT[1], LIGHTS_AT[2]);
+    lights.rotation.y = LIGHTS_AT[3];
+    lights.scale.setScalar(LIGHTS_AT[4]);
+    root.children.filter((o) => /^(bulb_|string_)/.test(o.name)).forEach((o) => lights.add(o));
+    lights.getObjectByName('string_posts').visible = false;
+    root.add(candle, lights);
+  }
+  if (name === 'packaging') {
+    // the drinking straw stands through the lid's straw hole, tilted, about 45% of the cup's height above it
+    const pivot = new THREE.Group(), straw = root.getObjectByName('drinking_straw');
+    pivot.position.set(0.01, 0.1112, 0.017);
+    pivot.rotation.set(0.06, 0, -0.14);
+    straw.rotation.set(0, 0, Math.PI / 2);
+    straw.position.set(0.0035, -0.0255, 0);
+    root.getObjectByName('cup').add(pivot.add(straw));
+    root.userData.pieces = PACK_NODES.map((n) => root.getObjectByName(n));
+  }
+  return root;
+}
+
+// Loads every model; one that fails (404, blocked folder, blocked Draco decoder) is left out with a warning.
+async function loadModels() {
+  const [{ GLTFLoader }, { DRACOLoader }, { MeshSurfaceSampler }] = await Promise.all([
+    import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'), import('three/addons/math/MeshSurfaceSampler.js'),
+  ]);
+  const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/');
+  const loader = new GLTFLoader().setDRACOLoader(draco), names = ['hut', 'packaging', 'cafe', 'farmer'], M = { Sampler: MeshSurfaceSampler };
+  const got = await Promise.allSettled(names.map((n) => loader.loadAsync(`models/${n}.glb`)));
+  draco.dispose();
+  got.forEach((r, i) => {
+    if (r.status === 'fulfilled') M[names[i]] = arrange(names[i], r.value.scene);
+    else console.warn('film model off:', names[i], r.reason?.message ?? r.reason);
+  });
+  return M;
+}
+
 export function start(canvas, tier = TIER) {
   // colours below are written as they should look
   THREE.ColorManagement.enabled = false;
   // MSAA is fixed when the context is made, so a High start keeps it after a step down to low.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier.msaa && !VIDEO, powerPreference: 'high-performance' });
   try {
-    let cur = build(canvas, renderer, tier);
+    let cur = build(canvas, renderer, tier), models = null;
     const film = {
       renderer, tier,
       render: (p, t) => cur.render(p, t),
       resize: (force) => cur.resize(force),
       // a late import must not attach after a step down
       attachPost: (m) => { if (film.tier.post) cur.attachPost(m); },
+      attachModels(m) {
+        models = m;
+        cur.attachModels(m);
+      },
       // Step down to another tier: rebuild the scene with that tier's counts on the same renderer (one-time hitch).
-      setTier(next) { cur.dispose(true); cur = build(canvas, renderer, next); film.tier = next; },
+      setTier(next) {
+        cur.dispose(true);
+        cur = build(canvas, renderer, next);
+        film.tier = next;
+        if (models) cur.attachModels(models);
+      },
       dispose: () => cur.dispose(),
     };
     return film;
@@ -307,21 +401,25 @@ function build(canvas, renderer, tier) {
   })();
 
   // Farmer's hut on stilts, with a lantern
-  let hutWin; const hutRim = { value: col(0, 0, 0) };
+  let hutWin, hutV1; const hutRim = { value: col(0, 0, 0) }, hut = new THREE.Group();
+  // a warm rim where the low sun or the afterglow catches the roof edges (v1 roof and hut.glb thatch)
+  const rimHook = (sh) => {
+    sh.uniforms.uHutRim = hutRim;
+    sh.fragmentShader = 'uniform vec3 uHutRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uHutRim * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 6.0);');
+  };
   {
     // backlit: dark, the rim does the work
-    const hut = new THREE.Group(), wood = lambert(0x24170e), thatch = lambert(0x2a1c10, { flatShading: true });
+    const wood = lambert(0x24170e), thatch = lambert(0x2a1c10, { flatShading: true });
     for (const [x, z] of [[-1, -0.8], [1, -0.8], [-1, 0.8], [1, 0.8]]) mesh(new THREE.BoxGeometry(0.12, 1.9, 0.12), wood, x, 0.95, z, hut);
     mesh(new THREE.BoxGeometry(2.3, 0.12, 1.9), wood, 0, 0.95, 0, hut);
     mesh(new THREE.BoxGeometry(2.1, 0.8, 0.06), wood, 0, 1.4, -0.8, hut);
     for (const x of [-1.03, 1.03]) mesh(new THREE.BoxGeometry(0.06, 0.8, 1.6), wood, x, 1.4, 0, hut);  // side walls: a room, not a panel
     // lamplight on the back wall: a small soft warm patch, not a lit panel
     hutWin = mesh(new THREE.PlaneGeometry(0.62, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: shadowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 0.2, 1.38, -0.76, hut);
-    thatch.onBeforeCompile = (sh) => {  // a warm rim where the low sun or the afterglow catches the roof edges
-      sh.uniforms.uHutRim = hutRim;
-      sh.fragmentShader = 'uniform vec3 uHutRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uHutRim * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 6.0);');
-    };
+    thatch.onBeforeCompile = rimHook;
     const roof = mesh(new THREE.ConeGeometry(2.0, 1.1, 4), thatch, 0, 2.35, 0, hut); roof.rotation.y = Math.PI / 4; roof.scale.set(1.15, 1, 0.9);
+    // hut.glb replaces these once it loads (the lamplight and the shade stay)
+    hutV1 = hut.children.filter((m) => m !== hutWin);
     // its shade on the ground
     mesh(new THREE.PlaneGeometry(3.6, 3.0).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, opacity: 0.55, depthWrite: false }), 0, 0.04, 0, hut);
     hut.position.set(...HUT); hut.rotation.y = -0.5; scene.add(hut);
@@ -400,25 +498,26 @@ function build(canvas, renderer, tier) {
   // the profile starts with a flat floor (rings from the axis out to f(0)) raised 2.5 cm, so the bowl is solid from above and clear of the table top
   const lathe = (f, h, floor) => new THREE.LatheGeometry(Array.from({ length: floor }, (_, k) => new THREE.Vector2(f(0) * k / floor, 0.025))
     .concat(Array.from({ length: 11 }, (_, k) => new THREE.Vector2(f(h * k / 10), h * k / 10))), 28);
-  const pack = OBJ.map(() => new THREE.Group());
-  mesh(new THREE.BoxGeometry(1.1, 0.45, 0.8).translate(0, 0.225, 0), paper, 0, 0, 0, pack[0]);
-  mesh(new THREE.BoxGeometry(1.14, 0.1, 0.84), paper, 0, 0.405, 0, pack[0]);  // the lid: a shallow overhang over the top
+  // each piece: an outer group that flies (place, turn, scale) and an inner one for its tilt in the air
+  const pack = OBJ.map(() => new THREE.Group()), inner = pack.map((g) => g.add(new THREE.Group()).children[0]);
+  const qAir = OBJ.map((o) => new THREE.Quaternion().setFromEuler(new THREE.Euler(o.pose[0], 0, o.pose[1], 'ZYX'))), qFlat = new THREE.Quaternion();
+  mesh(new THREE.BoxGeometry(1.1, 0.45, 0.8).translate(0, 0.225, 0), paper, 0, 0, 0, inner[0]);
+  mesh(new THREE.BoxGeometry(1.14, 0.1, 0.84), paper, 0, 0.405, 0, inner[0]);  // the lid: a shallow overhang over the top
   const bowlGeo = lathe(bowlR, 0.4, 4), bp = bowlGeo.attributes.position;
   // floor darkens softly toward the centre
   bowlGeo.setAttribute('color', new THREE.BufferAttribute(Float32Array.from({ length: bp.count * 3 }, (_, i) => {
     const v = Math.floor(i / 3), r = Math.hypot(bp.getX(v), bp.getZ(v)) / bowlR(0);
     return bp.getY(v) < 0.02 || bp.getY(v) > 0.03 ? 1 : 0.68 + 0.32 * Math.min(1, r) ** 1.5;
   }), 3));
-  mesh(bowlGeo, pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true, side: THREE.DoubleSide, vertexColors: true }), U.uRim), 0, 0, 0, pack[1]);
-  mesh(new THREE.CylinderGeometry(0.32, 0.21, 0.75, 24).translate(0, 0.375, 0), paper, 0, 0, 0, pack[2]);
-  mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 24), paper, 0, 0.78, 0, pack[2]);
-  const shadows = pack.map((g, i) => {
-    const m = mesh(new THREE.PlaneGeometry(...[[1.6, 1.25], [1.0, 1.0], [0.65, 0.65]][i]).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, depthWrite: false }), 0, -OBJ[i].at[1] + 0.03, 0, g);
-    return m;
-  });
+  mesh(bowlGeo, pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true, side: THREE.DoubleSide, vertexColors: true }), U.uRim), 0, 0, 0, inner[1]);
+  mesh(new THREE.CylinderGeometry(0.32, 0.21, 0.75, 24).translate(0, 0.375, 0), paper, 0, 0, 0, inner[2]);
+  mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 24), paper, 0, 0.78, 0, inner[2]);
   pack.forEach((g) => scene.add(g));
   const trails = points(n(240), 12, () => [0, 0, 0], TRAIL);  // gold sparks behind each flying piece
-  const packMats = [paper, pack[1].children[0].material];
+  const packMats = [paper, inner[1].children[0].material];
+  // packaging.glb waits here until the fold has not begun (or nothing is drawn yet), so neither the pieces nor the
+  // fibre targets jump; packModel turns true once it is in
+  let packSwap = null, packModel = false, drawn = false;
 
   // City: dark blocks with lit windows, rising on the horizon
   const city = new THREE.Group(); scene.add(city);
@@ -468,34 +567,51 @@ function build(canvas, renderer, tier) {
   mesh(new THREE.BoxGeometry(14, 0.06, 9), deck, 0, 0.03, TABLE[2], cafe);  // the terrace ends at the railing; the city lies below
   for (let x = -7; x <= 7; x += 1) mesh(new THREE.BoxGeometry(0.05, 1.0, 0.05), rail, x, 0.5, TABLE[2] - 4.3, cafe);
   for (const y of [0.5, 1.0]) mesh(new THREE.BoxGeometry(14, y === 1 ? 0.06 : 0.025, 0.07), rail, 0, y, TABLE[2] - 4.3, cafe);
-  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16), jar, CANDLE[0], CANDLE[1] + 0.05, CANDLE[2], cafe);  // the candle
-  mesh(new THREE.CylinderGeometry(1.25, 1.23, 0.07, 96), wood, TABLE[0], 0.88, TABLE[2], cafe);
-  mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.85, 12), wood, TABLE[0], 0.45, TABLE[2], cafe);
-  mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.05, 32), wood, TABLE[0], 0.06, TABLE[2], cafe);
+  // v1's real-size stand-ins for cafe.glb: candle, table top, column, foot
+  const cafeV1 = [
+    mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 16), jar, CANDLE[0], CANDLE[1] + 0.035, CANDLE[2], cafe),
+    mesh(new THREE.CylinderGeometry(0.35, 0.345, 0.03, 64), wood, TABLE[0], TABLE[1] - 0.015, TABLE[2], cafe),
+    mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.72, 12), wood, TABLE[0], DECK + 0.36, TABLE[2], cafe),
+    mesh(new THREE.CylinderGeometry(0.2, 0.22, 0.03, 32), wood, TABLE[0], DECK + 0.015, TABLE[2], cafe),
+  ];
   {  // a potted plant: a café cue (chairs come with the Blender models)
     mesh(new THREE.CylinderGeometry(0.24, 0.18, 0.42, 20), pot, TABLE[0] - 2.3, 0.21, TABLE[2] - 1.3, cafe);
     const r = rng(15);
     const blade = new THREE.ConeGeometry(0.07, 0.95, 6).translate(0, 0.47, 0);  // tall leaves fanning out of the pot
     for (let i = 0; i < 11; i++) { const l = mesh(blade, leaf, TABLE[0] - 2.3, 0.38, TABLE[2] - 1.3, cafe); l.rotation.set((r() - 0.5) * 0.9, r() * 6.28, (r() - 0.5) * 0.9); l.scale.set(1, 0.7 + r() * 0.6, 0.35); }
   }
+  // the festoon: v1's catenary (the shape of cafe.glb's wire, in its space) until the model brings its own
+  const lights = new THREE.Group();
+  lights.position.set(TABLE[0] + LIGHTS_AT[0], DECK + LIGHTS_AT[1], TABLE[2] + LIGHTS_AT[2]);
+  lights.rotation.y = LIGHTS_AT[3];
+  lights.scale.setScalar(LIGHTS_AT[4]);
+  cafe.add(lights);
+  lights.updateMatrixWorld();
+  const catenary = (k) => new THREE.Vector3(-1.8 + 3.4 * k, 2.36 - Math.sin(k * Math.PI) * 0.3, -1.2 + 1.65 * k);
   const wire = new THREE.LineBasicMaterial({ color: 0x6a5038, transparent: true });  // the catenary reads against the night
-  cafe.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 21 }, (_, i) => { const k = i / 20; return new THREE.Vector3(-3.6 + 7.2 * k, 2.93 - Math.sin(k * Math.PI) * 0.35, TABLE[2] - 2.5 + 3 * k); })), wire));
+  cafeV1.push(lights.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 21 }, (_, i) => catenary(i / 20))), wire)).children[0]);
   const cafeMats = [wood, deck, wire, leaf, pot, rail, jar];
 
   // Glows: the hut lantern and the café bulbs (aSeed.x picks which, aSeed.y is size)
-  {
-    const pos = [HUT[0] - 0.2, 1.6, HUT[2] + 0.3, HUT[0] - 0.2, 1.6, HUT[2] + 0.3, C[0], 0.7, C[2] - 0.7], sd = [0.2, 1.4, 0, 1, 0.2, 5.5, 1, 1, 0.8, 6, 0, 1], cl = [1, 0.62, 0.25, 0.5, 0.28, 0.1, 0.45, 0.3, 0.14];
+  // points 3-4 are the candle, 5-18 the bulbs: cafe.glb moves them onto its flame and bulbs
+  const glowPos = (() => {
+    const pos = [HUT[0] - 0.2, 1.6, HUT[2] + 0.3, HUT[0] - 0.2, 1.6, HUT[2] + 0.3, C[0], 1.3, C[2] - 0.7], sd = [0.2, 1.4, 0, 1, 0.2, 5.5, 1, 1, 0.8, 6, 0, 1], cl = [1, 0.62, 0.25, 0.5, 0.28, 0.1, 0.45, 0.3, 0.14];
     // candle flame and its halo
-    pos.push(CANDLE[0], CANDLE[1] + 0.14, CANDLE[2], CANDLE[0], CANDLE[1] + 0.14, CANDLE[2]);
+    pos.push(CANDLE[0], CANDLE[1] + 0.06, CANDLE[2], CANDLE[0], CANDLE[1] + 0.06, CANDLE[2]);
     sd.push(0.5, 0.05, 3, 0, 0.5, 0.7, 5, 1);
     cl.push(1, 0.7, 0.35, 0.5, 0.26, 0.1);
     // tight warm points with a small halo
-    for (let i = 0; i < 14; i++) { const k = i / 13; pos.push(-3.6 + 7.2 * k, 2.85 - Math.sin(k * Math.PI) * 0.35, TABLE[2] - 2.5 + 3 * k); sd.push(0.5, 0.15, i, 0.3); cl.push(1, 0.62, 0.3); }
+    for (let i = 0; i < 14; i++) {
+      pos.push(...lights.localToWorld(catenary(i / 13).setY(catenary(i / 13).y - 0.09)).toArray());
+      sd.push(0.5, 0.3, i, 0.3);
+      cl.push(1, 0.62, 0.3);
+    }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.Float32BufferAttribute(sd, 4)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(cl, 3));
     const m = new THREE.Points(g, new THREE.ShaderMaterial({ uniforms: U, vertexShader: HEAD + GLOW, fragmentShader: GLOW_F, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     m.frustumCulled = false; scene.add(m);
-  }
+    return g.attributes.position;
+  })();
 
   // Lights
   // a warm ground bounce: undersides are not black
@@ -509,14 +625,14 @@ function build(canvas, renderer, tier) {
   scene.add(fireLight);
   // warm key from the sun side; the cool fill comes from the sky
   const packLight = new THREE.PointLight(0xffb070, 0, 9, 1);
-  packLight.position.set(C[0] + 2.6, 1.8, C[2] + 0.6);
+  packLight.position.set(C[0] + 1.6, 2.2, C[2] + 2.2);
   scene.add(packLight);
   // a warm overhead pool; the floor falls into darkness beyond it
   const cafeLight = new THREE.PointLight(0xffb060, 0, 6, 2);
   cafeLight.position.set(0, 2.8, TABLE[2]);
   scene.add(cafeLight);
-  // a warm pool on the table from the bulb overhead; it falls off to the deck
-  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4); candle.position.set(CANDLE[0], CANDLE[1] + 0.2, CANDLE[2]); scene.add(candle);
+  // the candle's own small warm pool, from just above the glass (closer, it blows out the wax)
+  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4); candle.position.set(CANDLE[0], CANDLE[1] + 0.2, CANDLE[2] + 0.05); scene.add(candle);
   // the table only, not the floor by the lens
   const tableSpot = new THREE.SpotLight(0xffd2a4, 0, 7, 0.42, 1, 1);
   tableSpot.position.set(0.3, 2.8, TABLE[2] + 0.2);
@@ -531,8 +647,104 @@ function build(canvas, renderer, tier) {
   const Z_DUSK = col(0.2, 0.2, 0.31), Z_NIGHT = col(0.035, 0.04, 0.12), CITY_FOG = col(0.07, 0.065, 0.13), CLOUD = col(0.2, 0.13, 0.17), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.4, 0.35, 0.33), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.42, 0.45, 0.78), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
   const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3(), sv = new THREE.Vector3(), fwd = new THREE.Vector3();
 
+  // ---- Blender models (models/*.glb, see prepare()): each replaces its v1 shapes once loaded; until then, or if
+  // it fails, v1 stays. They take the film's lights; their textures carry AO (on uv1) and detail only.
+  const farmer = new THREE.Group();
+  farmer.position.set(FARMER[0], groundH(FARMER[0], FARMER[1]), FARMER[1]);
+  farmer.rotation.y = FARMER[2];
+  scene.add(farmer);
+  // emissive parts the film drives each frame: [material, kind, base]
+  const emit = [];
+  const pulpRim = (sh) => {
+    sh.uniforms.uRim = U.uRim;
+    sh.fragmentShader = 'uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uRim * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);');
+  };
+  const fade = (list, m) => {
+    m.transparent = true;
+    m.userData.op ??= m.opacity;
+    if (!list.includes(m)) list.push(m);
+  };
+  function attachModels(M) {
+    if (M.hut) {
+      hutV1.forEach((m) => { m.visible = false; });
+      hut.add(M.hut);
+      M.hut.traverse((o) => { if (o.material?.name.startsWith('thatch')) o.material.onBeforeCompile = rimHook; });
+    }
+    if (M.farmer) {
+      farmer.add(M.farmer);
+      M.farmer.traverse((o) => { if (o.material?.userData.base) emit.push([o.material, 'torch', o.material.userData.base]); });
+    }
+    if (M.cafe) {
+      cafeV1.forEach((m) => { m.visible = false; });
+      M.cafe.position.set(TABLE[0], DECK, TABLE[2]);
+      cafe.add(M.cafe);
+      M.cafe.traverse((o) => {
+        const m = o.material;
+        if (!m) return;
+        if (m.userData.base) emit.push([m, 'flame', m.userData.base]);
+        else fade(cafeMats, m);
+        if (m.name.startsWith('bulb')) emit.push([m, 'bulb', m.name === 'bulb' ? 4 : 1.6]);
+        if (m.name === 'glass' || m.name === 'wax') emit.push([m, 'candle', m.name === 'glass' ? 0.8 : 0.5]);
+        if (tier.name === 'low' && m.clearcoat) m.clearcoat = 0;
+      });
+      // the glow sprites onto the model's flame and bulbs
+      scene.updateMatrixWorld();
+      glowPos.setXYZ(3, ...M.cafe.getObjectByName('candle_flame').localToWorld(v.set(-0.2, 0.8, 0.13)).toArray());
+      glowPos.setXYZ(4, v.x, v.y, v.z);
+      for (let i = 0; i < 14; i++) glowPos.setXYZ(5 + i, ...M.cafe.getObjectByName('bulb_' + String(i).padStart(2, '0')).localToWorld(v.set(0, -0.09, 0)).toArray());
+      glowPos.needsUpdate = true;
+    }
+    if (M.packaging) packSwap = () => swapPack(M);
+  }
+  function swapPack(M) {
+    M.packaging.userData.pieces.forEach((node, i) => {
+      inner[i].children.forEach((m) => { m.visible = false; });
+      inner[i].add(node);
+    });
+    inner.forEach((g) => g.traverse((o) => {
+      if (!o.material || !o.visible) return;
+      fade(packMats, o.material);
+      if (tier.name === 'low') o.material.sheen = 0;
+      // v1's warm lift and afterglow rim on the pulp (U.uRim)
+      if (o.material.name === 'straw_inner') return;
+      o.material.emissive.setHex(0x24180a);
+      o.material.onBeforeCompile = pulpRim;
+      o.material.customProgramCacheKey = () => 'pulpRim';
+    }));
+    // fibre targets on the models' surfaces, posed as they fold (FIELD_S, in the air, before any lift)
+    pack.forEach((g, i) => {
+      g.position.set(...OBJ[i].at);
+      g.rotation.set(0, OBJ[i].rot, 0);
+      g.scale.setScalar(FIELD_S);
+      inner[i].quaternion.copy(qAir[i]);
+    });
+    scene.updateMatrixWorld();
+    const r = rng(8), parts = [], w = [];
+    inner.forEach((g) => g.traverse((o) => {
+      if (!o.isMesh || !o.visible) return;
+      const s = new M.Sampler(o).setRandomGenerator(r).build();
+      parts.push([o, s]);
+      w.push(s.distribution[s.distribution.length - 1]);
+    }));
+    const pos = fibres.geometry.attributes.position, total = w.reduce((a, b) => a + b, 0);
+    for (let i = 0; i < pos.count; i++) {
+      let k = r() * total, j = 0;
+      while (j < w.length - 1 && k > w[j]) k -= w[j++];
+      parts[j][1].sample(v);
+      v.applyMatrix4(parts[j][0].matrixWorld);
+      pos.setXYZ(i, v.x, v.y, v.z);
+    }
+    pos.needsUpdate = true;
+    packModel = true;
+  }
+
   function render(p, t) {
     const q = clamp01(p), P = params(q, t, camera.aspect < 1), sunW = smooth(0.45, 1, P.sun), night = smooth(0.6, 0.95, q);
+    const flick = 0.85 + 0.15 * Math.sin(t * 11.3) * Math.sin(t * 4.7 + 1.3);  // candle flicker
+    if (packSwap && (!drawn || P.fold < 0.05)) {
+      packSwap();
+      packSwap = null;
+    }
     camera.position.set(P.camera.x, P.camera.y, P.camera.z);
     camera.lookAt(P.camera.lookX, P.camera.lookY, P.camera.lookZ);
     sky.position.copy(camera.position);
@@ -595,8 +807,8 @@ function build(canvas, renderer, tier) {
     fill.intensity = (0.04 * sunW + 0.7 * (1 - sunW)) * (1 - 0.8 * P.city);
     fireLight.intensity = 9 * P.fire;
     cafeLight.intensity = 5 * P.city;
-    tableSpot.intensity = 1.2 * P.city;
-    candle.intensity = 1.6 * P.city;
+    tableSpot.intensity = 0.3 * P.city;
+    candle.intensity = 0.08 * P.city * flick;
     bladeU.uSunDir.value.copy(sunDir);
     bladeU.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity / Math.PI);
     // no lavender: the blade shader cools only the shade
@@ -658,34 +870,43 @@ function build(canvas, renderer, tier) {
     bladeU.uPack.value = form * (1 - P.fly) * 0.6;
     bladeU.uPackPos.value.set(C[0], 0.4, C[2] + 0.1);
     U.uRim.value.setRGB(1, 0.6, 0.3).multiplyScalar(0.6 * form * (1 - 0.8 * P.city));  // the afterglow behind them rims the pulp
-    packMats.forEach((m) => { m.opacity = U.uSurf.value; });  // the pulp surface fills in over the settled outline
+    packMats.forEach((m) => { m.opacity = U.uSurf.value * (m.userData.op ?? 1); });  // the pulp surface fills in over the settled outline
+    const s0 = packModel ? FIELD_S : FOLD_S, s1 = packModel ? 1 : LAND_S;
     pack.forEach((g, i) => {
-      const o = OBJ[i], e = clamp01((P.fly - i * 0.08) / 0.84) ** 2.2;  // slow start keeps them just ahead of the camera
-      const end = v.set(TABLE[0] + o.land[0], TABLE[1], TABLE[2] + o.land[2]), mid = (a, b) => (a + b) / 2;
+      // slow start keeps them just ahead of the camera; the cutlery flies with the piece above it
+      const o = OBJ[i], e = clamp01((P.fly - (i % 3) * 0.08) / 0.84) ** 2.2;
+      const end = v.set(TABLE[0] + o.table[0], TABLE[1], TABLE[2] + o.table[1]), mid = (a, b) => (a + b) / 2;
       const m = [mid(o.at[0], end.x), mid(o.at[1], end.y) + 4, mid(o.at[2], end.z)];
       const b = (k) => (1 - e) ** 2 * o.at[k] + 2 * e * (1 - e) * m[k] + e * e * end.getComponent(k);
+      // presented just above chest height once formed
+      g.position.set(b(0), b(1) + lift * (1 - e) + 0.05 * Math.sin(t * 1.2 + i * 2) * (1 - e) * (1 - form), b(2));
+      g.rotation.set(Math.sin(e * Math.PI) * 0.5, o.rot + (o.table[2] - o.rot) * e + (1 - e) * (i % 2 ? -6.28 : 6.28), 0);
+      g.scale.setScalar(s0 + (s1 - s0) * e);
+      inner[i].quaternion.slerpQuaternions(packModel ? qAir[i] : qFlat, qFlat, e);
+      g.visible = form > 0.001 && (packModel || i < 3);
+      if (i > 2) return;
       U.uFA.value[i].set(...o.at);
       U.uFM.value[i].set(...m);
       U.uFE.value[i].copy(end);
       U.uFP.value.setComponent(i, e);
-      // presented just above the stubble once formed
-      g.position.set(b(0), b(1) + lift * (1 - e) + 0.05 * Math.sin(t * 1.2 + i * 2) * (1 - e) * (1 - form), b(2));
-      g.rotation.set(Math.sin(e * Math.PI) * 0.5, o.rot + (1 - e) * (i % 2 ? -6.28 : 6.28), 0);
-      g.scale.setScalar(FOLD_S + (0.62 - FOLD_S) * e);  // 0.62 on the table, as before
-      g.visible = form > 0.001;
-      bladeU.uObj.value[i].set(g.position.x, g.position.y, g.position.z, form * (1 - smooth(0, 0.15, e)));  // contact shadow while it rests
-      const sh = shadows[i];
-      sh.material.opacity = 0.85 * U.uSurf.value * (1 - smooth(0, 0.1, e)) * (1 - 0.3 * liftK);
-      // the soft shadow stays on the stubble
-      sh.position.y = (o.at[1] + 0.03 - g.position.y) / g.scale.y;
-      sh.scale.setScalar(1 + 0.5 * liftK);
+      // contact shadow on the stubble while it rests low (none once it floats or flies)
+      bladeU.uObj.value[i].set(g.position.x, g.position.y, g.position.z, form * (1 - smooth(0, 0.15, e)) * smooth(0.6, 0.1, g.position.y - groundH(g.position.x, g.position.z)));
     });
     trails.visible = P.fly > 0 && P.fly < 1;
     // below the terrace: it falls away past the railing
     city.visible = P.city > 0.001;
     city.position.y = -12 - ((1 - P.city) ** 2) * 16;
     cafe.visible = P.city > 0.001;
-    cafeMats.forEach((m) => { m.opacity = P.city; });
+    cafeMats.forEach((m) => { m.opacity = P.city * (m.userData.op ?? 1); });
+    // the farmer lights the field; flames flicker on t alone
+    farmer.visible = P.fire > 0.001;
+    const torch = Math.min(1, 4 * P.fire) * (0.8 + 0.2 * Math.sin(t * 13.1 + 0.4) * Math.sin(t * 5.3));
+    for (const [m, kind, k] of emit) {
+      if (kind === 'bulb') m.emissiveIntensity = k * P.city;
+      else if (kind === 'candle') m.emissiveIntensity = k * P.city * flick;
+      else m.color.copy(k).multiplyScalar(kind === 'flame' ? P.city * flick : torch);
+    }
+    drawn = true;
 
     if (!post) return renderer.render(scene, camera);
     // The sun disc's direction projected with the camera (uv); facing fades the rays out when the sun is behind the view.
@@ -725,7 +946,7 @@ function build(canvas, renderer, tier) {
     });
     if (!keepRenderer) { renderer.dispose(); renderer.forceContextLoss(); }  // hand the GPU context back at once
   }
-  return { render, dispose, resize, attachPost, renderer };
+  return { render, dispose, resize, attachPost, attachModels, renderer };
 }
 
 // ---- page wiring ----------------------------------------------------------------------------
@@ -750,6 +971,9 @@ async function boot() {
     if (!postWarned) { postWarned = true; console.warn('film post off:', e); }
   });
   const postReady = (VIDEO || BENCH) ? loadPost() : new Promise((r) => requestAnimationFrame(() => r(loadPost())));
+  // The models load after the first frame on every tier (small); any failure keeps v1's shapes. Fixed renders wait.
+  const attachModels = () => loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e));
+  const modelsReady = (VIDEO || BENCH) ? attachModels() : new Promise((r) => requestAnimationFrame(() => r(attachModels())));
 
   const doors = document.getElementById('doors');
   const caps = [...document.querySelectorAll('.beat .caption')];
@@ -827,7 +1051,7 @@ async function boot() {
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
   canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
   measure(); shown = target();
-  if (VIDEO || BENCH) await postReady;  // fixed renders and the bench must include post
+  if (VIDEO || BENCH) await Promise.all([postReady, modelsReady]);  // fixed renders and the bench must include post and the models
   if (root.classList.contains('no-film')) return stop();  // the 4 s failsafe fired meanwhile (slow GPU): stills, never a film on a hidden 0x0 canvas
   document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
