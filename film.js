@@ -434,9 +434,9 @@ function build(canvas, renderer) {
     renderer.render(scene, camera);
   }
 
-  function resize() {
+  function resize(force) {
     const w = canvas.clientWidth, h = canvas.clientHeight;
-    if (w === camera.userData.w && h === camera.userData.h) return;  // phone URL bars fire resize; the 100lvh canvas stays put
+    if (!force && w === camera.userData.w && h === camera.userData.h) return;  // phone URL bars fire resize; the 100lvh canvas stays put
     camera.userData = { w, h };
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.fov = w < h ? 62 : 48; camera.updateProjectionMatrix();
@@ -494,7 +494,7 @@ async function boot() {
     } else if (!VIDEO && frameMs.length >= 30) {                // keep watching: the smoke beat is the heaviest
       frameMs.push(dt); if (frameMs.length > 90) frameMs.shift();
       if (tooSlow(frameMs)) {
-        if (film.renderer.getPixelRatio() > 1) { film.renderer.setPixelRatio(1); film.resize(); frameMs.length = 30; }  // once
+        if (film.renderer.getPixelRatio() > 1) { film.renderer.setPixelRatio(1); film.resize(true); frameMs.length = 30; }  // once
         else stop();
       }
     }
