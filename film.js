@@ -464,7 +464,10 @@ function build(canvas, renderer, tier) {
   resize();
 
   function dispose(keepRenderer) {
-    scene.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+    scene.traverse((o) => {
+      o.geometry?.dispose(); [].concat(o.material || []).forEach((m) => m.dispose());
+      if (o.isInstancedMesh) o.dispose();  // frees instanceMatrix / instanceColor buffers
+    });
     if (!keepRenderer) { renderer.dispose(); renderer.forceContextLoss(); }  // hand the GPU context back at once
   }
   return { render, dispose, resize, renderer };
@@ -501,9 +504,10 @@ async function boot() {
   // One step down the ladder (tiers.js STEPS); the last step is the stills. The caller resets frameMs.
   const degrade = () => {
     step = nextStep(step);
+    if (step === 'high-dpr1' && film.renderer.getPixelRatio() <= 1) step = nextStep(step);  // nothing to drop
     if (step === 'stills') return stop();
     if (step === 'high-dpr1') { film.renderer.setPixelRatio(1); film.resize(true); }
-    else film.setTier(TIERS.low);
+    else { try { film.setTier(TIERS.low); } catch (e) { console.warn('film off:', e); return stop(); } }
     frames = 0;
   };
   function benchFrame(now) {  // ?film=bench: p runs 0..1 over 20 s, t is the clock; no frame skipping, no step-downs
@@ -526,16 +530,17 @@ async function boot() {
     shown += (target() - shown) * (1 - Math.exp(-dt / 120));  // a little damping on wheel steps
     const t = (now - t0) / 1000;
     film.render(shown, t); tick(t);
+    if (VIDEO || BENCH) return;
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
       if (frameMs.length === 30) { if (shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else { degrade(); frameMs.length = 0; } }
-    } else if (!VIDEO && frameMs.length >= 30) {                // keep watching: the smoke beat is the heaviest
+    } else if (frameMs.length >= 30) {                // keep watching: the smoke beat is the heaviest
       frameMs.push(dt); if (frameMs.length > 90) frameMs.shift();
       if (tooSlow(frameMs)) { degrade(); frameMs.length = 30; }
     }
   }
   const onResize = () => { film.resize(); measure(); };
-  const onVis = () => { cancelAnimationFrame(raf); if (!document.hidden && !manual) { last = 0; raf = requestAnimationFrame(frame); } };
+  const onVis = () => { if (VIDEO || BENCH) return; cancelAnimationFrame(raf); if (!document.hidden && !manual) { last = 0; raf = requestAnimationFrame(frame); } };
   const onLost = (e) => { e.preventDefault(); stop(); };
   const onMotion = (e) => { if (e.matches) stop(); };  // reduced motion switched on mid-visit: stills
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
