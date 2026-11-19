@@ -25,9 +25,17 @@ export function sceneAt(p) {
 const KEYS = [
   [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
-  [1.5, 6.5, -3, 0, 2, -16],        // above the field, smoke gone, straw lifting
-  [-1, 3.6, -7.5, 0, 2.7, -14.5],   // close on the box, bowl and cup
+  [1.2, 3.6, -3.5, 0, 2.4, -16],    // above the field, smoke gone, straw lifting; low enough to keep the horizon
+  [-0.4, 1.45, -10.5, 0, 0.7, -14], // close on the box, bowl and cup, resting on the straw
   [0, 1.95, -39.4, 0, 0.95, -44.5],  // the café table, city lights beyond
+];
+// Portrait screens see a narrow slice: the hut turned into the right third, the packaging and the whole café table
+// pulled back so they fit, the table low in the frame under the doors.
+const KEYS_TALL = [
+  [0, 1.7, 9, 9, 18.5, -30],     // tilted up: sunset sky behind the hero text, sun, hut and field low in the frame
+  KEYS[1], KEYS[2],
+  [-0.4, 2.0, -8.6, 0, 0.7, -14],
+  [0, 2.85, -36.8, 0, 2.3, -42],
 ];
 
 function catmull(a, b, c, d, u) {
@@ -35,19 +43,19 @@ function catmull(a, b, c, d, u) {
   return 0.5 * (2 * b + (c - a) * u + (2 * a - 5 * b + 4 * c - d) * u2 + (3 * b - a - 3 * c + d) * u3);
 }
 
-function cameraAt(p) {
-  const f = clamp01(p) * (KEYS.length - 1);
-  const i = Math.min(KEYS.length - 2, Math.floor(f)), u = f - i;
-  const k = (j) => KEYS[Math.min(KEYS.length - 1, Math.max(0, j))];
+function cameraAt(p, keys) {
+  const f = clamp01(p) * (keys.length - 1);
+  const i = Math.min(keys.length - 2, Math.floor(f)), u = f - i;
+  const k = (j) => keys[Math.min(keys.length - 1, Math.max(0, j))];
   const [x, y, z, lookX, lookY, lookZ] = [0, 1, 2, 3, 4, 5].map((n) => catmull(k(i - 1)[n], k(i)[n], k(i + 1)[n], k(i + 2)[n], u));
   return { x, y, z, lookX, lookY, lookZ };
 }
 
-export function params(p, t) {
+export function params(p, t, tall = false) {
   const q = clamp01(p);
   const fire = smooth(0.2, 0.32, q) * (1 - smooth(0.32, 0.45, q));
   const smoke = smooth(0.3, 0.37, q) * (1 - smooth(0.37, 0.5, q));
-  const cam = cameraAt(q);
+  const cam = cameraAt(q, tall ? KEYS_TALL : KEYS);
   const flicker = 1 - 0.05 * (0.5 + 0.5 * Math.sin(t * 9)); // idle: small, keeps fire in 0..1
   return {
     camera: { ...cam, x: cam.x + 0.05 * Math.sin(t * 0.6), y: cam.y + 0.05 * Math.sin(t * 0.45 + 1) },
@@ -59,6 +67,15 @@ export function params(p, t) {
     fly: smooth(0.72, 0.9, q),
     city: smooth(0.75, 1, q),
   };
+}
+
+// Piecewise-linear through [x, y] points with ascending x, clamped at both ends (scroll -> p, and p -> scroll swapped).
+export function through(pts, x) {
+  if (x <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (x <= pts[i][0]) { const [x0, y0] = pts[i - 1], [x1, y1] = pts[i]; return y0 + (y1 - y0) * (x - x0) / (x1 - x0); }
+  }
+  return pts[pts.length - 1][1];
 }
 
 export const counter = (base, perSecond, t) => Math.floor(base + perSecond * t);

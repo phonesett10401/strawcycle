@@ -28,3 +28,14 @@ test('tooSlow: rolling median over a full window', () => {
   assert.equal(T.tooSlow([...Array(90).fill(80), ...Array(60).fill(16)]), false);  // recovered
   assert.equal(T.tooSlow([...Array(10).fill(16), ...Array(35).fill(80), ...Array(25).fill(16)]), true);
 });
+
+test('through: piecewise scroll <-> p', () => {
+  const pts = [[0, 0.05], [100, 0.2], [300, 1]];
+  assert.equal(T.through(pts, -5), 0.05); assert.equal(T.through(pts, 50), 0.125); assert.ok(Math.abs(T.through(pts, 200) - 0.6) < 1e-12); assert.equal(T.through(pts, 999), 1);
+  assert.ok(Math.abs(T.through(pts.map(([a, b]) => [b, a]), 0.6) - 200) < 1e-9);
+});
+test('portrait framing only moves the camera', () => {
+  const a = T.params(0.9, 1), b = T.params(0.9, 1, true);
+  assert.notDeepEqual(a.camera, b.camera); assert.deepEqual({ ...a, camera: 0 }, { ...b, camera: 0 });
+  assert.deepEqual(T.params(0.5, 1).camera, T.params(0.5, 1, true).camera);
+});

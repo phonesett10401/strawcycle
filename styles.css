@@ -37,7 +37,7 @@
   --dusk-error: oklch(72% 0.16 27); --dusk-shade: oklch(10% 0.03 262 / 0.6);
   --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
   --film-scrim: oklch(14% 0.03 262 / 0.85);
-  --film-text-scrim: oklch(12% 0.03 262 / 0.7);  /* hero shares it: the sun glow sits right of the heading (film.js sky) */
+  --film-text-scrim: oklch(12% 0.03 262 / 0.5);  /* film caption bands: lighter now that they end just past the text */
   /* Print: a certificate prints black on white paper */
   --print-paper: oklch(99.5% 0.005 90); --print-ink: oklch(16% 0.02 262); --print-muted: oklch(34% 0.02 262);
 
@@ -380,17 +380,27 @@ body.home {
 html.no-film #film { display: none; }
 .home .site-footer { position: relative; }
 .page-head--home h1, .page-head--home .lead, .beat .caption, .doors h2 { text-shadow: var(--film-shadow); }
-/* Film text scrim: the lit film (sun glow, fires, city windows) sits right behind the type. One soft dusk band per text
-   block, full screen width and feathered top and bottom (no boxes), holds 4.5:1. The stills have their own gradient. */
+/* Film text scrim: one soft dusk band per text block, from the left screen edge to just past the text, feathered on
+   every side (no boxes), so the type holds 4.5:1 while the sky and sun right of it stay lit. --band-w is the text
+   width; the band ends there and fades out over 14rem. The stills have their own gradient. */
 html.film main { overflow-x: clip; }
-html.film .page-head--home .wrap, html.film .beat .caption, html.film .doors .wrap { position: relative; isolation: isolate; }
+html.film .page-head--home .wrap, html.film .beat .caption, html.film .doors .wrap { position: relative; isolation: isolate; --band-w: 48rem; }
+html.film .page-head--home .wrap { --band-w: 47rem; }
+html.film .doors .wrap { --band-w: 51rem; }
 html.film .page-head--home .wrap::before, html.film .beat .caption::before, html.film .doors .wrap::before {
+  --band-end: calc(max(var(--gutter), (100vw - var(--container)) / 2) + var(--band-w));
   content: ""; position: absolute; z-index: -1; pointer-events: none;
-  inset: -5rem calc(50% - 50vw); background: linear-gradient(to bottom, transparent, var(--film-text-scrim) 5rem, var(--film-text-scrim) calc(100% - 5rem), transparent);
+  --f: var(--band-feather, 7rem);
+  inset: calc(-1 * var(--f)) calc(50% - 50vw);
+  background: linear-gradient(to bottom, transparent, oklch(12% 0.03 262 / 0.1) calc(var(--f) * 0.25), oklch(12% 0.03 262 / 0.32) calc(var(--f) * 0.54), var(--film-text-scrim) var(--f),
+    var(--film-text-scrim) calc(100% - var(--f)), oklch(12% 0.03 262 / 0.32) calc(100% - var(--f) * 0.54), oklch(12% 0.03 262 / 0.1) calc(100% - var(--f) * 0.25), transparent);
+  -webkit-mask-image: linear-gradient(to right, #000 var(--band-end), rgb(0 0 0 / 0.45) calc(var(--band-end) + 7rem), transparent calc(var(--band-end) + 18rem));
+  mask-image: linear-gradient(to right, #000 var(--band-end), rgb(0 0 0 / 0.45) calc(var(--band-end) + 7rem), transparent calc(var(--band-end) + 18rem));
 }
+.page-head--home .lead { color: var(--color-ink); }
 .skip-film {
   display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
-  color: var(--color-ink-2); font-weight: 600; text-shadow: var(--film-shadow);
+  color: var(--color-ink); font-weight: 600; font-size: var(--text-lg); text-shadow: var(--film-shadow);
 }
 
 .beat { position: relative; display: grid; align-items: end; min-height: 100svh; padding-block: var(--space-3xl); overflow: hidden; }
@@ -406,6 +416,8 @@ html.no-film .beat::after { content: ""; position: absolute; inset: 0; backgroun
 .doors { display: grid; align-content: start; min-height: 100svh; padding-block: calc(var(--header-h) * 2 + var(--space-lg)) var(--space-3xl); } /* clears the sticky header (two rows on phones) when centred at the end of the film */
 .doors h2 { margin: 0; }
 @media (max-width: 40rem) {
+  .page-head--home { align-content: start; }  /* the hero text up top; the sunset, sun and hut sit below it (film.js tall framing) */
+  html.film .page-head--home .wrap { --band-feather: 4.5rem; }
   .beat { padding-block: var(--space-2xl); }
   .counters { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
   .counters div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }
