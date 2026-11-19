@@ -99,7 +99,7 @@ All new values are pure functions of `p`, `t` and seeded randoms, so determinism
   - the meal box, bowl and cup with a pressed-straw-fibre look;
   - the café table, two chairs and a bulb string.
 - Bake lighting into textures so they look rich at no live cost.
-- Export glTF binary (`models/*.glb`) with meshopt compression and WebP textures. Budget: all models together under 1.5 MB.
+- Export glTF binary (`models/*.glb`) with Draco compression (built into Blender's exporter, so no extra tool) and WebP textures. Budget: all models together under 1.5 MB.
 - The film loads them after its first frame. Until they arrive, or if they fail, the current procedural shapes stay. The fibre fold targets come from the same packaging shapes so straw folds into the real boxes.
 - Phase B re-runs the critic loop at the same viewpoints.
 
@@ -131,7 +131,7 @@ All new values are pure functions of `p`, `t` and seeded randoms, so determinism
 - Three tiers (Low, High, Ultra) and how the start tier is picked.
 - Post-processing from three.js addons at the pinned version; cheap screen-space light rays instead of volumetric lighting.
 - Six critic viewpoints, five-round cap, and the 16.7 ms High budget.
-- Assets built from Blender Python scripts kept in the repo; 1.5 MB budget; meshopt + WebP.
+- Assets built from Blender Python scripts kept in the repo; 1.5 MB budget; Draco + WebP.
 - Branch `feat/film-v2`.
 - Everything under "Settled details": the load and performance budgets, byte-exact determinism with FXAA/SMAA for video, the start-tier rule, Ultra renders as the new stills, the Phase B modelling style, and baked AO plus live light.
 
