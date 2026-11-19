@@ -37,7 +37,7 @@
   --dusk-error: oklch(72% 0.16 27); --dusk-shade: oklch(10% 0.03 262 / 0.6);
   --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
   --film-scrim: oklch(14% 0.03 262 / 0.85);
-  --film-text-scrim: oklch(12% 0.03 262 / 0.84);
+  --film-text-scrim: oklch(12% 0.03 262 / 0.7); --film-hero-scrim: oklch(12% 0.03 262 / 0.84);  /* the hero sits on the sun glow */
   /* Print: a certificate prints black on white paper */
   --print-paper: oklch(99.5% 0.005 90); --print-ink: oklch(16% 0.02 262); --print-muted: oklch(34% 0.02 262);
 
@@ -380,12 +380,13 @@ body.home {
 html.no-film #film { display: none; }
 .home .site-footer { position: relative; }
 .page-head--home h1, .page-head--home .lead, .beat .caption, .doors h2 { text-shadow: var(--film-shadow); }
-/* Film text scrim: the lit film (sun glow, fires, city windows) sits right behind the type, so each text block gets a
-   soft dusk-dark backing (uniform inside, feathered at the edge) to hold 4.5:1. The stills have their own gradient. */
-html.film .page-head--home h1, html.film .page-head--home .lead, html.film .skip-film, html.film .beat .caption > h2,
-html.film .beat .counters-label, html.film .beat .counters, html.film .doors h2 {
-  width: fit-content; max-width: 100%; border-radius: 0.75rem;
-  background: var(--film-text-scrim); box-shadow: 0 0 2rem 1rem var(--film-text-scrim);
+/* Film text scrim: the lit film (sun glow, fires, city windows) sits right behind the type. One soft dusk band per text
+   block, full screen width and feathered top and bottom (no boxes), holds 4.5:1. The stills have their own gradient. */
+html.film main { overflow-x: clip; }
+html.film .page-head--home .wrap, html.film .beat .caption, html.film .doors .wrap { position: relative; isolation: isolate; }
+html.film .page-head--home .wrap::before, html.film .beat .caption::before, html.film .doors .wrap::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  inset: -5rem calc(50% - 50vw); background: linear-gradient(to bottom, transparent, var(--film-text-scrim) 5rem, var(--film-text-scrim) calc(100% - 5rem), transparent);
 }
 .skip-film {
   display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
@@ -428,3 +429,4 @@ html.no-film .beat::after { content: ""; position: absolute; inset: 0; backgroun
   .flow { grid-template-columns: 1fr; gap: var(--space-lg); }
   .flow li + li::before { left: 50%; top: calc(-1 * var(--space-lg)); width: 0; height: var(--space-lg); border-top: 0; border-left: 2px solid var(--color-accent); }
 }
+html.film .page-head--home .wrap::before { background: linear-gradient(to bottom, transparent, var(--film-hero-scrim) 5rem, var(--film-hero-scrim) calc(100% - 5rem), transparent); }

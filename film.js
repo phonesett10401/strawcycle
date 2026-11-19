@@ -437,7 +437,8 @@ function build(canvas, renderer, tier) {
     smoke.visible = U.uS.value > 0.001; fibres.visible = U.uFibA.value > 0.001 && U.uFibOut.value < 1;
 
     const form = smooth(0.8, 1, P.fold);
-    U.uHalo.value = 0.5 * form * (1 - smooth(0.72, 0.8, q));  // trimmed: the halo sat behind the caption text packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
+    // halo trimmed to half: it sat behind the caption text
+    U.uHalo.value = 0.5 * form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
     packMats.forEach((m) => { m.opacity = form; });
     pack.forEach((g, i) => {
       const o = OBJ[i], e = clamp01((P.fly - i * 0.08) / 0.84) ** 2.2;  // slow start keeps them just ahead of the camera
