@@ -50,8 +50,9 @@ preview renders run on the CPU).
 
 - `PALETTE`, `srgb()`: colours from the `styles.css` tokens (oklch to linear RGB) and from 0-255 sRGB.
 - Textures, made with numpy and tileable by construction (periodic FFT blurs, wrapped strokes):
-  `fibre_textures` (pressed straw pulp at 8 cm per tile: a near-white albedo with 1-3 mm straw flecks, fine speckle
-  and broad mottling, tinted per material through `baseColorFactor`; a normal map with a web of 0.5-2 mm fibres
+  `fibre_textures` (pressed straw pulp at 8 cm per tile: a near-white albedo with fibres set into it, specks to
+  8 mm curved strands, mostly darker and some lighter, each at its own low contrast, clustered and half buried, over
+  broad mottling, tinted per material through `baseColorFactor`; a normal map with a web of 0.5-2 mm fibres
   and the forming screen's plain weave, which only the rough inner-face material turns up), `teak_textures`
   (warm golden oiled teak, long grain, no joints: the planks are modelled), `thatch_textures` (one thatch course:
   clumped cogon strands from the cut butt to the tucked top, greyed by weather), `fringe_texture` (hanging straw
@@ -106,19 +107,27 @@ preview renders run on the CPU).
 - **cafe.glb** (real size, metres): origin on the floor under the table's centre. Nodes: `table` (a 0.70 m top of
   six oiled teak planks with fine seams and a worn rim at 0.75 m, on a cast-iron base), `chair_l`, `chair_r` (woven
   rattan bistro chairs, seat 0.45 m, legs splayed 2.5 degrees, the seat ring joined to every leg under wrapped cane
-  bindings, a curved backrest, one shared mesh), `candle` (ribbed amber glass tumbler, wax burnt down to 47% with a
+  bindings, a curved backrest; both nodes use one shared mesh, its weighted normals baked in, and each node carries
+  its own translation and rotation round the table), `candle` (ribbed amber glass tumbler, wax burnt down to 47% with a
   melt pool, a short curled wick) at (-0.2, 0.75, 0.13), `candle_flame` (core, body, blue base; inside the glass,
   its tip below the rim), `string_wire` (a twisted pair of 4.8 mm cores with moulded clips), `bulb_00` to `bulb_13`
   (one shared mesh, each node translated to its clip: socket, thin clear S14 glass, glass stem, two lead wires and an
   emissive LED spiral filament), `string_posts` (round weighted planters with soil, poles, eye bolts). Emissive
   materials: `flame`, `flame_core`, `flame_blue`, `bulb`, a faint glow on `wax`. The glasses use
-  KHR_materials_transmission.
+  KHR_materials_transmission. Material names are unique: `iron` (table base) and `post_iron` (string posts),
+  `cable` (wire, sockets) and `chair_foot` (the chairs' rubber feet).
 - **farmer.glb**: origin at the feet, 1.65 m tall standing; he leans 18 degrees into his stride with both knees
   bent (crown about 1.55 m). His right hand wraps round a noded bamboo pole reaching forward and down; its tied
   30 cm straw-bundle head (charred, glowing at the end) rests on the stubble ahead of his leading foot. Nodes
   `farmer` and `torch_flame` (seven soft-edged flame cards: material `flame`, alpha BLEND from an orange to
   yellow-white texture that is also its emissive texture, double-sided; film.js renders them additively and adds
   embers and smoke).
+- Node transforms: the packaging and farmer nodes have none; `chair_l`, `chair_r` and `bulb_00`..`bulb_13` carry
+  translations (and the chairs rotations), because each pair or set shares one mesh.
+- Extensions: the flame cards use `KHR_materials_emissive_strength` (farmer `flame` 2.0, café `flame` 1.2), the
+  pulp `KHR_materials_sheen`, the teak `KHR_materials_clearcoat`, the glass `KHR_materials_transmission`.
+- `tests/models.test.mjs` (part of `node --test`) checks the committed GLBs: at most 1.5 MB and 200,000 triangles
+  in total, and the node names film.js needs.
 - The files need `KHR_draco_mesh_compression` and `EXT_texture_webp`, so load them with three.js's
   `GLTFLoader` plus a `DRACOLoader`. AO is each material's occlusion texture on UV set 1 (GLTFLoader sets
   `aoMap.channel` from `texCoord`).

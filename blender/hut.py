@@ -226,15 +226,26 @@ TT = 0.5                                     # metres of thatch texture across a
 
 def contour(y, n_pts=None):
     """The roof plane's horizontal outline at height y below the gablet: a rounded rectangle, as (point, outward)
-    pairs in film xz."""
+    pairs in film xz, resampled at even spacing (about 12 cm, or n_pts points) so the hips get the same station
+    density as the long sides."""
     d = (y - EY) / math.tan(TH)
     hx, hz = EX - d, EZ - d
-    pts = common.rrect(hx, hz, min(RC, hz * 0.9), na=5, nx=12, ny=10)
+    dense = [Vector(p) for p in common.rrect(hx, hz, min(RC, hz * 0.9), na=24, nx=96, ny=80)]
+    acc = [0.0]
+    for i in range(1, len(dense) + 1):
+        acc.append(acc[-1] + (dense[i % len(dense)] - dense[i - 1]).length)
+    n = n_pts or max(24, round(acc[-1] / 0.12))
+    pts, j = [], 0
+    for k in range(n):
+        s = acc[-1] * k / n
+        while acc[j + 1] < s:
+            j += 1
+        f = (s - acc[j]) / max(acc[j + 1] - acc[j], 1e-9)
+        pts.append(dense[j].lerp(dense[(j + 1) % len(dense)], f))
     out = []
-    for i, (a, b) in enumerate(pts):
-        pa, pb = pts[i - 1], pts[(i + 1) % len(pts)]
-        t = Vector((pb[0] - pa[0], pb[1] - pa[1]))
-        out.append((Vector((a, b)), Vector((t.y, -t.x)).normalized()))
+    for i, p in enumerate(pts):
+        t = pts[(i + 1) % n] - pts[i - 1]
+        out.append((p, Vector((t.y, -t.x)).normalized()))
     return out
 
 
@@ -256,13 +267,18 @@ SECTION = [(0.0, 0.0, 0.0), (-0.012, 0.05, 0.02), (0.0, 0.088, 0.06), (0.04, 0.0
 
 
 def course(outline, y, closed, thick=1.0, seed=0):
-    """One course along an outline at butt height y; ragged: each station's butt jitters up and down the slope."""
+    """One course along an outline at butt height y; ragged: the butt wanders up and down the slope and in and out
+    smoothly along the course (a function of distance, so hips and long sides match), with a little per-station
+    jitter on top."""
     r = random.Random(seed)
     rings, us = [], [0.0]
+    ph = [r.uniform(0, 6.3) for _ in range(4)]
     for i, (p2, o2) in enumerate(outline):
         if i:
             us.append(us[-1] + (p2 - outline[i - 1][0]).length / TT)
-        du, dn = r.uniform(-0.025, 0.02), r.uniform(-0.008, 0.012)
+        s = us[i] * TT
+        du = 0.014 * math.sin(7 * s + ph[0]) + 0.007 * math.sin(11 * s + ph[1]) + r.uniform(-0.004, 0.004)
+        dn = 0.006 * math.sin(5 * s + ph[2]) + 0.004 * math.sin(9 * s + ph[3]) + 0.002
         th = thick if closed else thick * min(1.0, 0.3 + 0.35 * min(i, len(outline) - 1 - i))   # thin, ragged ends at the gablets
         rings.append([at(p2, o2, y, u + (du if k < 4 else 0), (n + (dn if 0 < k < 4 else 0)) * (th if k < 5 else 1)) for k, (u, n, _) in enumerate(SECTION)])
     if closed:
@@ -294,7 +310,8 @@ def fringe(outline, y, closed, length, seed, lift=0.0):
     for i, (p2, o2) in enumerate(outline):
         if i:
             us.append(us[-1] + (p2 - outline[i - 1][0]).length / 0.3)
-        sm = lambda a, b: math.sin(i * a + ph[b]) * 0.65 + math.sin(i * a * 2.3 + ph[b + 1]) * 0.35   # smooth along the eave
+        s = us[i] * 0.3 / 0.25   # distance along the eave, so clumps vary the same on hips and long sides
+        sm = lambda a, b: math.sin(s * a + ph[b]) * 0.65 + math.sin(s * a * 2.3 + ph[b + 1]) * 0.35
         ln = length * (1 + 0.18 * sm(0.45, 0))
         wob, curl = 0.22 * ln * sm(0.3, 1), (0.15 + 0.12 * sm(0.55, 2)) * ln   # clumps lean in and out, ends curl
         top = at(p2, o2, y, 0.03, 0.05 + lift)
@@ -327,7 +344,7 @@ for j in range(N_TOP):                                   # upper courses, front 
         roof.append(course(ln, y, False, seed=20 + 2 * j + s))
         cards.append(fringe(ln, y, False, 0.1, 120 + 2 * j + s))
 # the underside seen from below the eaves: the plane just under the courses, facing down
-rings = [[at(p2, o2, y, 0.0, -0.012) for p2, o2 in contour(y)] for y in np.linspace(EY, YG + 0.08, 6)]
+rings = [[at(p2, o2, y, 0.0, -0.012) for p2, o2 in contour(y, 64)] for y in np.linspace(EY, YG + 0.08, 6)]
 under = common.loft('under', rings, UNDER, caps=None)
 common.uv_map(under, lambda cos, poly: [(c.x / TT, c.z / TT) for c in cos])
 roof.append(under)
@@ -394,6 +411,8 @@ for x in np.arange(-0.8, 0.81, 0.4):
     parts.append(common.tube('bind', ring, 0.011, ROPE, 6))
 
 # ------------------------------------------------------------ one mesh, smooth shaded, AO baked, exported
+for o in parts:  # thatch courses shade smooth round the hips; only the cut butt's top edge stays hard
+    common.smooth(o, 60 if o in roof else 40, weighted=False)
 for o in bpy.context.scene.objects:
     o.select_set(o in parts)
 bpy.context.view_layer.objects.active = parts[0]
@@ -402,9 +421,9 @@ hut = bpy.context.active_object
 hut.name = hut.data.name = 'hut'
 hut.data.transform(hut.matrix_world)  # join kept the first part's origin; put it back at ground centre
 hut.matrix_world.identity()
-common.smooth(hut, 40, weighted=False)
 common.bake_ao(hut, 512)  # the fringe cards stay out of the bake (as solids they would blacken the eaves)
 fr = common.join(cards, 'hut_fringe')
+common.smooth(fr, 89, weighted=False)
 fr.data.uv_layers.new(name='AO')
 hut = common.join([hut, fr], 'hut')
 tris = common.triangles([hut])

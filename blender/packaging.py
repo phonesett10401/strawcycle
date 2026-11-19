@@ -3,8 +3,8 @@ with a snap-on lid and straw hole, plus fork, spoon, chopsticks and a drinking s
 
 blender --background --factory-startup --python blender/packaging.py -- [out.glb] [preview dir]
 
-Real sizes: box 20 x 15 x 7.6 cm, bowl 15 cm across, cup 11 cm tall, fork and spoon 16 cm, chopsticks 23 cm, straw
-21 cm x 7 mm. Walls 1.5-1.8 mm with thin rolled rims. Film.js applies one group scale. Every piece is its own node
+Real sizes: box 20 x 15 x 5.7 cm, bowl 16.9 cm across and 5.6 cm deep, cup 11 cm tall, fork and spoon 16 cm,
+chopsticks 23 cm, straw 15.5 cm x 7 mm. Walls 1.5-1.8 mm with thin rolled rims. Film.js applies one group scale. Every piece is its own node
 with no transform and its origin at its table-contact centre, front = glTF +Z; the small pieces lie flat with their
 length along glTF X.
 """
@@ -28,10 +28,10 @@ TILE = 0.08                # metres of surface per repeat of the fibre texture (
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 ALB, NRM = common.fibre_textures(1024)
-CREAM = common.srgb(226, 205, 166)   # x the ~0.96 albedo: about #D9C3A0 under neutral light, warm beige
+CREAM = common.srgb(227, 205, 167)   # x the ~0.96 albedo: about #D9C4A0 under neutral light, cream straw (no pink)
 PULP = common.pbr('pulp', CREAM, ALB, NRM, strength=0.4, rough=0.74, sheen=0.25)           # smooth pressed face
-PULP_IN = common.pbr('pulp_inner', common.srgb(222, 199, 162), ALB, NRM, strength=1.0, rough=0.9, sheen=0.3)  # screen side
-CUTLERY = common.pbr('pulp_cutlery', common.srgb(224, 200, 160), ALB, NRM, strength=0.45, rough=0.72, sheen=0.25)
+PULP_IN = common.pbr('pulp_inner', common.srgb(223, 201, 163), ALB, NRM, strength=1.0, rough=0.9, sheen=0.3)  # screen side
+CUTLERY = common.pbr('pulp_cutlery', common.srgb(225, 202, 162), ALB, NRM, strength=0.45, rough=0.72, sheen=0.25)
 STRAW = common.pbr('straw', common.srgb(228, 204, 158), ALB, NRM, strength=0.35, rough=0.85, sheen=0.2)
 STRAW_IN = common.pbr('straw_inner', common.srgb(112, 94, 68), ALB, NRM, strength=0.6, rough=0.97)  # the bore, darker
 
@@ -74,24 +74,26 @@ def box_ring(d, z):
 
 
 # (inset from the flange edge, height). Base: recessed bottom, foot, tray wall with a 7 degree draft, base flange.
-# Seam: a 0.7 mm parting line only 1.6 mm deep (the lid's inner lip sits right behind it, no cavity). Lid: flange,
+# Seam: the lid flange sits on the base flange; where their rounded edges meet they leave a 0.6 mm deep V parting
+# line (no slot, so nothing to see through). Lid: flange,
 # wall with the same draft, a soft rounded top edge and a gently domed top with a low raised panel.
 D7 = math.tan(math.radians(7))
 prof = [(0.040, 0.0016), (0.0195, 0.0016), (0.0172, 0.0), (0.0138, 0.0), (0.0138 - D7 * 0.0245, 0.0245),
-        (0.0008, 0.0247), (0.0, 0.0253), (0.0008, ZB), (0.0016, ZB), (0.0016, ZB + 0.0007), (0.0008, ZB + 0.0007),
-        (0.0, ZB + 0.0013), (0.0008, ZB + 0.002), (0.0102, ZB + 0.002), (0.0102 + D7 * 0.0245, ZB + 0.0265),
+        (0.0008, 0.0247), (0.0, 0.0253), (0.0006, ZB + 0.00035), (0.0, ZB + 0.0013), (0.0008, ZB + 0.002), (0.0102, ZB + 0.002), (0.0102 + D7 * 0.0245, ZB + 0.0265),
         (0.0185, 0.0548), (0.032, 0.0558), (0.045, 0.0563), (0.0482, 0.0565), (0.0498, 0.0571), (0.060, 0.0574),
         (0.069, 0.0575)]
-prof = common.fillet(prof, [0, .002, .001, .004, .0012, .0004, .0004, .0003, .0002, .0002, .0003, .0004, .0004, .0012,
+prof = common.fillet(prof, [0, .002, .001, .004, .0012, .0004, .0004, .0001, .0004, .0004, .0012,
                             .006, .008, .01, .0015, .0015, .0015, .004, 0], n=2)
 shell = common.loft('box_shell', [box_ring(d, z) for d, z in prof], PULP)
 # hinge: a folded strip wrapping round both flanges' back edges, with a crease at the fold
 hinge = common.strip('box_hinge', [(0, 0.0715, 0.0249), (0, 0.0762, 0.0249), (0, 0.0781, 0.0262), (0, 0.0784, 0.0273),
                                    (0, 0.0781, 0.0284), (0, 0.0762, 0.0298), (0, 0.0715, 0.0298)], 0.062, 0.0006, PULP)
-# snap tab: the lid flange's front tongue folds down over the base flange's edge (0.9 mm clear) and hooks under it
-tab_path = [(0, -0.0715, ZB + 0.0025), (0, -0.0754, ZB + 0.0025), (0, -0.0760, ZB + 0.0016), (0, -0.0761, 0.0252),
-            (0, -0.0755, 0.0242), (0, -0.0712, 0.0241)]   # hugging the flange edges with 0.4 mm clear
-tab = common.strip('box_tab', tab_path, [0.011, 0.011, 0.011, 0.0108, 0.0102, 0.009], 0.0005, PULP)
+# snap tab: a thin tongue of the lid flange, sunk into the flange top, folds down over the flanges' edges (its inner
+# face 0.05 mm into them, so nothing shows between) and hooks under the base flange; rounded side edges and only
+# 0.65 mm proud, so its shadow beside it stays a soft sliver, not a slot
+tab_path = [(0, -0.0715, ZB + 0.0022), (0, -0.0749, ZB + 0.0022), (0, -0.0753, ZB + 0.0015), (0, -0.0753, 0.0252),
+            (0, -0.0749, 0.0244), (0, -0.0712, 0.0243)]
+tab = common.strip('box_tab', tab_path, [0.011, 0.011, 0.011, 0.0108, 0.0102, 0.009], 0.00035, PULP, p=4)
 box = common.join([shell, hinge, tab], 'box')
 
 # ------------------------------------------------------------ bowl: 16.9 cm, thin wall, rolled rim, foot ring, floor

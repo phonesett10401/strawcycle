@@ -49,6 +49,8 @@ BULB = common.pbr('bulb', (1, 0.7, 0.35, 1), rough=0.5, emission=(1.0, 0.6, 0.25
 BULB_GLASS = common.pbr('bulb_glass', common.srgb(252, 244, 232), rough=0.03, transmission=1.0)  # clear glass
 LEAD = common.pbr('lead_wire', common.srgb(150, 140, 125), rough=0.3, metal=1.0)
 CABLE = common.pbr('cable', common.srgb(11, 11, 12), rough=0.55)                  # matte-satin black rubber
+FOOT = common.pbr('chair_foot', common.srgb(11, 11, 12), rough=0.55)   # the cable's rubber, but AO-baked with the chair
+POST_IRON = common.pbr('post_iron', common.srgb(32, 30, 28), rough=0.45, metal=0.5)   # iron without the table's AO
 PLANTER = common.pbr('planter', common.srgb(78, 74, 70), rough=0.9)           # weighted fibre-cement pot
 SOIL = common.pbr('soil', common.srgb(38, 28, 20), rough=1.0)
 
@@ -248,7 +250,7 @@ for c in CORNER:                           # bindings where the seat ring meets 
 for s in (-1, 1):                          # and where the back rail meets the uprights
     chair_parts.append(bind(upright(s, RAIL_Z), upright(s, RAIL_Z + 0.05) - upright(s, RAIL_Z - 0.05), LEG_R, 4, 0.03))
 for c in CORNER:                           # rubber feet
-    f = common.lathe('c_foot', common.fillet([(0, 0), (0.0145, 0), (0.0145, 0.01), (0, 0.012)], [0, 0.003, 0.003, 0], n=2), 10, CABLE)
+    f = common.lathe('c_foot', common.fillet([(0, 0), (0.0145, 0), (0.0145, 0.01), (0, 0.012)], [0, 0.003, 0.003, 0], n=2), 10, FOOT)
     f.data.transform(orient(leg_at(c, 0.0), leg_at(c, 0.1) - leg_at(c, 0.0)))
     chair_parts.append(f)
 bake_transforms(chair_parts)
@@ -378,12 +380,12 @@ for P in (P0, P1):   # round weighted planters, soil topped, the pole set into t
         if poly.center.z > 0.365 and poly.center.xy.length < 0.179:
             poly.material_index = 1
     pot.data.transform(Matrix.Translation((P.x, P.y, 0)))
-    pole = common.tube('pp', [(P.x, P.y, 0.3), (P.x, P.y, P.z + 0.08)], 0.02, IRON, 12)
-    cap = common.lathe('pc', common.fillet([(0, 0), (0.024, 0), (0.024, 0.012), (0, 0.022)], [0, .004, .006, 0], n=2), 12, IRON)
+    pole = common.tube('pp', [(P.x, P.y, 0.3), (P.x, P.y, P.z + 0.08)], 0.02, POST_IRON, 12)
+    cap = common.lathe('pc', common.fillet([(0, 0), (0.024, 0), (0.024, 0.012), (0, 0.022)], [0, .004, .006, 0], n=2), 12, POST_IRON)
     cap.location = (P.x, P.y, P.z + 0.08)
     other = P1 if P is P0 else P0
     to = V((other.x - P.x, other.y - P.y, 0)).normalized()
-    eye = common.lathe('pe', [(0.006 + 0.0025 * math.cos(a), 0.0025 * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 10, endpoint=False)], 14, IRON, closed=True)
+    eye = common.lathe('pe', [(0.006 + 0.0025 * math.cos(a), 0.0025 * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 10, endpoint=False)], 14, POST_IRON, closed=True)
     eye.data.transform(Matrix.Translation(V((P.x, P.y, P.z)) + to * 0.03) @ V((0, 0, 1)).rotation_difference(to).to_matrix().to_4x4())
     wrap = common.tube('pw', [(P.x + 0.0235 * math.cos(a), P.y + 0.0235 * math.sin(a), P.z - 0.03 + 0.006 * a / (2 * math.pi)) for a in np.linspace(0, 6 * math.pi, 40)], 0.0035, CABLE, 6)
     posts += [pot, pole, cap, eye, wrap]
@@ -397,11 +399,10 @@ common.smooth(flame, 89, weighted=False)
 
 # ------------------------------------------------------------ AO, second chair, export
 common.bake_ao([table, chair], 1024, distance=0.12, name='cafe')
+common.apply_mods(chair)   # bake the weighted normals into the mesh, so both chair nodes can use it unmodified
 chair_r = bpy.data.objects.new('chair_r', chair.data)  # same mesh, so the file stores it once
 bpy.context.scene.collection.objects.link(chair_r)
 place(chair_r, 0.52, 0.2, -6)
-for m in chair.modifiers:  # the weighted-normal modifier travels with the object, not the mesh
-    chair_r.modifiers.new(m.name, m.type).keep_sharp = True
 objs = [table, chair, chair_r, candle, flame, string_wire, string_posts] + bulbs
 tris = common.triangles(objs)
 size = common.export_glb(objs, GLB)

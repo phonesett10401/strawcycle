@@ -206,33 +206,42 @@ def image(name, rgb, data=False, alpha=None):
 
 def fibre_textures(size=1024, seed=1, mesh=96):
     """Moulded pressed-straw pulp at real scale (one tile ~ 8 cm, 1 px ~ 0.08 mm). Albedo: near white (tint it per
-    material), darker straw flecks of 1-3 mm, short pale fibres, broad soft mottling. Normal: a web of short random
-    fibres (0.5-2 mm, low amplitude), the flecks standing a little proud, and the forming screen's plain-weave mesh
-    (~0.8 mm pitch; strong only where a material turns the normal map up, i.e. the rough inner faces)."""
+    material) with fibres set into the pulp, not on it: specks, short chips and a few long curved strands (0.2-8 mm),
+    some darker and some lighter than the pulp, each at its own low contrast, clustered and half buried (faded by a
+    soft mask), over broad soft mottling. Normal: a web of short random fibres (0.5-2 mm, low amplitude), the larger
+    fibres raised a little, and the forming screen's plain-weave mesh (~0.8 mm pitch; strong only where a material
+    turns the normal map up, i.e. the rough inner faces). Most of the fibre read is in the normal map."""
+    rng = np.random.default_rng(seed + 10)
     fib, _ = strokes(size, int(size * size * 0.035), (6, 26), seed, bend=0.7, width=0.55)
     fib = np.clip(fib / np.percentile(fib, 99.5), 0, 1.3)
-    fleck, _ = strokes(size, int(size * size * 0.0003), (10, 30), seed + 1, bend=0.6, width=1.6)   # straw chips
-    fleck = np.clip(fleck / np.percentile(fleck, 99.8), 0, 1) ** 0.7
-    dots, _ = strokes(size, int(size * size * 0.002), (1, 4), seed + 6, width=0.8)                  # fine speckle
-    dots = np.clip(dots / np.percentile(dots, 99.7), 0, 1)
-    pale, _ = strokes(size, int(size * size * 0.0012), (8, 24), seed + 2, bend=0.8, width=0.6)
-    pale = np.clip(pale / np.percentile(pale, 99.7), 0, 1)
+
+    def fibres(n, length, s, bend, width):
+        """n strokes, each with its own signed contrast (mostly darker, some lighter): coverage and signed value."""
+        vals = np.where(rng.random(n) < 0.7, -1.0, 0.8) * rng.uniform(0.25, 1.0, n)
+        cov, val = strokes(size, n, length, s, bend=bend, width=width, values=vals)
+        return np.clip(cov / np.percentile(cov, 99.8), 0, 1) ** 0.8, val, cov
+
+    specks = fibres(int(size * size * 0.0012), (2, 6), seed + 6, 0.3, 0.8)
+    chips = fibres(int(size * size * 0.00025), (8, 34), seed + 1, 0.7, 1.1)
+    strands = fibres(int(size * size * 0.000012), (40, 100), seed + 2, 1.6, 0.9)   # a few long curved strands
+    cluster = np.clip(0.55 + 0.45 * noise(size, 40, seed=seed + 7), 0, 1)           # uneven density
+    buried = np.clip(0.6 + 0.4 * noise(size, 3, seed=seed + 8), 0.15, 1)            # parts of a fibre sink in
+    d = sum(a * c * v for a, (c, v, _) in zip((0.12, 0.16, 0.14), (specks, chips, strands))) * cluster * buried
     broad = noise(size, 110, seed=seed + 3)
     mid = noise(size, 22, seed=seed + 4)
     grain = noise(size, 1.2, seed=seed + 5)
-    v = 0.962 + 0.02 * broad + 0.012 * mid + 0.008 * grain - 0.035 * fib
-    rgb = np.repeat(v[..., None], 3, -1)
-    tone = np.array([0.6, 0.47, 0.3])
-    rgb = rgb * (1 - 0.45 * fleck[..., None]) + tone * 0.45 * fleck[..., None]
-    rgb = rgb * (1 - 0.25 * dots[..., None]) + tone * 0.25 * dots[..., None]
-    rgb = rgb * (1 - 0.3 * pale[..., None]) + 0.3 * pale[..., None]
+    v = 0.962 + 0.02 * broad + 0.012 * mid + 0.008 * grain - 0.03 * fib
+    # darker fibres go warm straw brown (blue drops most), lighter ones toward pale straw
+    k = np.where(d[..., None] < 0, np.array([0.8, 1.0, 1.35]), np.array([1.0, 1.0, 0.85]))
+    rgb = v[..., None] * (1 + d[..., None] * k)
     U = (np.arange(size) + 0.5) / size * mesh
     fu, cu = U % 1, np.floor(U).astype(int)
     hu = np.clip(1 - ((fu - 0.5) / 0.32) ** 2, 0, 1)            # a wire's round profile across it
     top = ((cu[None, :] + cu[:, None]) % 2) == 0                # plain weave: wires alternate over and under
     wv, wu = hu[None, :] * np.ones((size, 1)), hu[:, None] * np.ones((1, size))
     screen = np.where(top, np.maximum(wu, 0.55 * wv), np.maximum(0.55 * wu, wv))
-    height = 1.1 * _gauss(fib, 0.5) + 0.7 * fleck + 0.3 * dots + 0.3 * screen + 0.25 * mid + 0.15 * grain
+    raised = sum(c for c, _, _ in (specks, chips, strands)) * buried
+    height = 1.1 * _gauss(fib, 0.5) + 0.6 * raised + 0.3 * screen + 0.25 * mid + 0.15 * grain
     return image('pulp_albedo', rgb), image('pulp_normal', normal_map(height, 0.9), data=True)
 
 
