@@ -1,7 +1,7 @@
 // Home scroll film: one Three.js scene drawn only from params(p, t) (timeline.js), so any frame can be
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
 // Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
-import { params, rng, counter, shouldUse3D } from './timeline.js';
+import { params, rng, counter, shouldUse3D, tooSlow } from './timeline.js';
 
 const root = document.documentElement;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -84,7 +84,7 @@ void main() {
   p.z += (aSeed.y - 0.5) * wide * 0.6;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = psize(1.6 + h * 9.0, mv);
+  gl_PointSize = min(psize(1.6 + h * 9.0, mv), 0.35 * uScale);  // cap the near puffs: overdraw on phones
   vA = uS * 0.5 * (1.0 - 0.6 * hf);
   vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.0, 0.35, hf));
 }`;
@@ -469,7 +469,7 @@ async function boot() {
 
   let film;
   try { THREE = await import('three'); film = start(canvas); } catch (e) { console.warn('film off:', e); film?.dispose(); return fallback(); }
-  if (root.classList.contains('no-film')) return film.dispose();  // the 4 s failsafe already chose the stills
+  if (root.classList.contains('no-film')) return (film.dispose(), fallback());  // the 4 s failsafe already chose the stills
 
   const doors = document.getElementById('doors');
   let end = 1, raf = 0, last = 0, manual = false, shown = 0, frames = 0;
@@ -491,6 +491,12 @@ async function boot() {
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
       if (frameMs.length === 30) { if (VIDEO || shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else stop(); }
+    } else if (!VIDEO && frameMs.length >= 30) {                // keep watching: the smoke beat is the heaviest
+      frameMs.push(dt); if (frameMs.length > 90) frameMs.shift();
+      if (tooSlow(frameMs)) {
+        if (film.renderer.getPixelRatio() > 1) { film.renderer.setPixelRatio(1); film.resize(); frameMs.length = 30; }  // once
+        else stop();
+      }
     }
   }
   const onResize = () => { film.resize(); measure(); };

@@ -56,7 +56,7 @@ The Home film can be switched with a URL flag:
 - `index.html?film=off` shows the four still images instead of the 3D film.
 - `index.html?film=video` is for screen-capture tools. It turns off anti-aliasing, skips the speed check and stops the scroll loop, so the capture tool draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds).
 
-The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow, WebGL is missing or the Three.js download fails.
+The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit; it first drops to a lower resolution), WebGL is missing or the Three.js download fails.
 
 ## The still images (ChatGPT step)
 

@@ -23,4 +23,5 @@ document.querySelectorAll('article[data-product]').forEach((card) => {
     qty.value = c;
     window.sc.setBag(addProduct(window.sc.getBag(), id, c, logo.checked));
   });
+  update(); addEventListener('pageshow', update);  // Back-navigation restores input values after scripts run
 });

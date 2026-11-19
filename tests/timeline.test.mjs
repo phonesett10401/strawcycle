@@ -21,3 +21,10 @@ test('shouldUse3D', () => {
   assert.equal(T.shouldUse3D({ webgl: true, reducedMotion: false, frameMs: [50, 45, 60] }), false);
   assert.equal(T.shouldUse3D({ webgl: true, reducedMotion: false, frameMs: [16, 70, 17] }), true);
 });
+
+test('tooSlow: rolling median over a full window', () => {
+  assert.equal(T.tooSlow(Array(59).fill(80)), false);            // window not full yet
+  assert.equal(T.tooSlow(Array(60).fill(80)), true);
+  assert.equal(T.tooSlow([...Array(90).fill(80), ...Array(60).fill(16)]), false);  // recovered
+  assert.equal(T.tooSlow([...Array(10).fill(16), ...Array(35).fill(80), ...Array(25).fill(16)]), true);
+});

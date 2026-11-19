@@ -162,7 +162,7 @@ function lineItem(l, i) {
   });
   return el('li', {},
     el('div', { className: 'bl-info' }, el('strong', {}, p.name),
-      el('span', { className: 'fine' }, `${l.logo ? 'With your logo. ' : ''}${p.perCarton} pieces per carton, ${formatPiece(pieceSatang(l.id, l.cartons, l.logo))} per piece`)),
+      el('span', { className: 'fine' }, `${l.logo ? 'With your logo. ' : ''}${p.perCarton.toLocaleString('en')} pieces per carton, ${formatPiece(pieceSatang(l.id, l.cartons, l.logo))} per piece`)),
     el('div', { className: 'bl-row' }, el('label', { className: 'bl-qty' }, 'Cartons ', input), total, remove));
 }
 

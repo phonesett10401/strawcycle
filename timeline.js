@@ -63,8 +63,12 @@ export function params(p, t) {
 
 export const counter = (base, perSecond, t) => Math.floor(base + perSecond * t);
 
+export const median = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor((s.length - 1) / 2)]; };
+
 export function shouldUse3D({ webgl, reducedMotion, frameMs }) {
   if (!webgl || reducedMotion) return false;
-  const s = [...frameMs].sort((a, b) => a - b);
-  return s.length === 0 || s[Math.floor((s.length - 1) / 2)] <= 40;
+  return frameMs.length === 0 || median(frameMs) <= 40;
 }
+
+// Rolling check for the whole visit: true once a full window of recent frames has a median over 40 ms.
+export const tooSlow = (frameMs, window = 60) => frameMs.length >= window && median(frameMs.slice(-window)) > 40;

@@ -246,6 +246,7 @@ h3 { font-size: var(--text-title); line-height: 1.2; }
   body.printing-cert #checkout-dialog { position: static; display: block; width: auto; max-height: none; padding: 0; border: 0; overflow: visible; opacity: 1; transform: none; background: var(--print-paper); }
   body.printing-cert #checkout-dialog > .close, body.printing-cert #checkout-form, body.printing-cert #confirmation > :not(.certs),
   body.printing-cert .certificate:not(.printing), body.printing-cert .certificate .btn { display: none !important; }
+  body.printing-cert #checkout-dialog::backdrop { background: none; }
   body.printing-cert .certs { display: block; margin: 0; }
   body.printing-cert .certificate { background: var(--print-paper); color: var(--print-ink); border: 3px solid var(--print-ink); padding: 2rem; }
   body.printing-cert .certificate .fine { color: var(--print-muted); }
