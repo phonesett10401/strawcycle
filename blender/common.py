@@ -61,7 +61,7 @@ def material(name, colour):
 
 
 def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough=0.8, metal=0.0,
-        emission=None, alpha=None):
+        emission=None, alpha=None, transmission=0.0, ior=1.5):
     """A glTF-friendly Principled material: colour (x albedo texture), tangent normal map, emission, blended alpha."""
     mat = material(name, colour)
     nt = mat.node_tree
@@ -100,6 +100,9 @@ def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough
     if alpha is not None:
         bsdf.inputs['Alpha'].default_value = alpha
         mat.surface_render_method = 'BLENDED'
+    if transmission:  # exported as KHR_materials_transmission / _ior
+        bsdf.inputs['Transmission Weight'].default_value = transmission
+        bsdf.inputs['IOR'].default_value = ior
     return mat
 
 
@@ -172,24 +175,50 @@ def image(name, rgb, data=False):
     return img
 
 
-def fibre_textures(size=1024, seed=1):
-    """Moulded pressed-straw pulp: near-white albedo with brown and pale flecks (tint it per material) and its normal map."""
-    fine, _ = strokes(size, int(size * size * 0.055), (4, 22), seed, bend=0.6, width=0.6)
-    fine /= np.percentile(fine, 99.5)
-    dark, _ = strokes(size, int(size * size * 0.0022), (6, 28), seed + 1, bend=1.0, width=0.7)
-    pale, _ = strokes(size, int(size * size * 0.003), (5, 20), seed + 2, bend=0.8, width=0.6)
+def fibre_textures(size=1024, seed=1, mesh=96):
+    """Moulded pressed-straw pulp at real scale (one tile ~ 8 cm): a near-white albedo with fine, low-contrast fibre
+    speckle (tint it per material) and a normal map with sub-millimetre fibres and a faint mould-mesh emboss."""
+    fine, _ = strokes(size, int(size * size * 0.05), (3, 14), seed, bend=0.6, width=0.55)
+    fine = np.clip(fine / np.percentile(fine, 99.5), 0, 1.3)
+    dark, _ = strokes(size, int(size * size * 0.0016), (3, 10), seed + 1, bend=1.0, width=0.6)
+    pale, _ = strokes(size, int(size * size * 0.002), (3, 9), seed + 2, bend=0.8, width=0.55)
     dark = np.clip(dark / np.percentile(dark, 99.7), 0, 1)
     pale = np.clip(pale / np.percentile(pale, 99.7), 0, 1)
-    mottle = noise(size, 26, seed=seed + 3)
-    grain = noise(size, 5, seed=seed + 4)
-    pores = noise(size, 1.2, seed=seed + 5)
-    v = 0.9 + 0.03 * mottle + 0.018 * grain - 0.05 * np.clip(fine, 0, 1)
+    mottle = noise(size, 40, seed=seed + 3)
+    grain = noise(size, 4, seed=seed + 4)
+    v = 0.94 + 0.012 * mottle + 0.01 * grain - 0.025 * fine
     rgb = np.repeat(v[..., None], 3, -1)
-    fleck = np.array([0.52, 0.38, 0.24])
-    rgb = rgb * (1 - 0.75 * dark[..., None]) + fleck * 0.75 * dark[..., None]
-    rgb = rgb * (1 - 0.35 * pale[..., None]) + 1.0 * 0.35 * pale[..., None]
-    height = _gauss(np.clip(fine, 0, 1.4) + 0.4 * dark, 0.5) + 0.06 * pores
-    return image('pulp_albedo', rgb), image('pulp_normal', normal_map(height, 0.9), data=True)
+    fleck = np.array([0.62, 0.5, 0.36])
+    rgb = rgb * (1 - 0.35 * dark[..., None]) + fleck * 0.35 * dark[..., None]
+    rgb = rgb * (1 - 0.25 * pale[..., None]) + 0.25 * pale[..., None]
+    t = (np.arange(size) + 0.5) / size * 2 * np.pi * mesh
+    grid = (np.sin(t)[None, :] ** 2) * (np.sin(t)[:, None] ** 2)  # the forming screen's woven mesh, very faint
+    height = _gauss(fine + 0.3 * dark, 0.5) + 0.25 * grid + 0.04 * grain
+    return image('pulp_albedo', rgb), image('pulp_normal', normal_map(height, 0.8), data=True)
+
+
+def weave_textures(size=512, strands=16, kind='basket', colour=(0.55, 0.37, 0.21), seed=7):
+    """Tileable woven strands: 'basket' (rattan over-under) or 'twill' (split-bamboo herringbone, fak).
+    Returns albedo and normal map."""
+    u = (np.arange(size) + 0.5) / size * strands
+    U, Vv = np.meshgrid(u, u)
+    fu, fv = U % 1, Vv % 1
+    across = np.sin(np.pi * fv) ** 0.6                      # a strand running along u: its profile across v
+    along = np.sin(np.pi * fu) ** 0.6
+    cu, cv = np.floor(U).astype(int), np.floor(Vv).astype(int)
+    if kind == 'twill':  # 2-over-2 diagonal, flipped every 4 columns into a herringbone
+        flip = (cu // 4) % 2
+        top = (((cu + np.where(flip == 1, -cv, cv)) // 2) % 2) == 0
+    else:
+        top = ((cu + cv) % 2) == 0
+    height = np.where(top, (across + 0.15) * (0.75 + 0.25 * np.sin(np.pi * fu) ** 2),
+                      (along + 0.15) * (0.75 + 0.25 * np.sin(np.pi * fv) ** 2))
+    rng = np.random.default_rng(seed)
+    tone = 0.85 + 0.3 * rng.random((strands, strands))
+    t = np.where(top, tone[cv % strands, 0], tone[0, cu % strands])
+    streak = noise(size, 0.7, 12, seed) * 0.05
+    rgb = np.array(colour) * (t * (0.5 + 0.5 * height) + streak)[..., None]
+    return image(f'{kind}_albedo', rgb), image(f'{kind}_normal', normal_map(height * 3.0, 1.0), data=True)
 
 
 def teak_textures(size=1024, seed=3, planks=8):
@@ -202,32 +231,47 @@ def teak_textures(size=1024, seed=3, planks=8):
     freq = rng.integers(5, 12, planks)[pid]
     phase = rng.uniform(0, 1, planks)[pid]
     warp = noise(size, 14, 160, seed) * 0.55 + noise(size, 40, 400, seed + 1) * 0.9
-    ring = 0.5 + 0.5 * np.sin(2 * np.pi * ((U * planks) % 1 * freq * 0.35 + warp + phase))
+    ring = 0.5 + 0.5 * np.sin(2 * np.pi * ((U * planks) % 1 * freq * 1.1 + warp + phase))
     ring = ring ** 6
-    pores = noise(size, 0.8, 22, seed + 2)
+    pores = noise(size, 0.6, 30, seed + 2)
     streak = noise(size, 3, 90, seed + 3)
-    light, dark = np.array([0.48, 0.3, 0.17]), np.array([0.2, 0.115, 0.065])
+    light, dark = np.array([0.5, 0.33, 0.18]), np.array([0.2, 0.12, 0.065])
     fine = 0.5 + 0.5 * np.sin(2 * np.pi * ((U * planks) % 1 * freq * 1.7 + warp * 1.3 + 0.37 * phase))
-    k = np.clip(0.3 + 0.28 * ring + 0.12 * fine ** 4 + 0.22 * np.clip(pores, 0, 3) + 0.1 * streak, 0, 1)
+    lines = (np.abs(noise(size, 1.0, 70, seed + 4)) < 0.06).astype(float)  # crisp fine grain lines
+    k = np.clip(0.28 + 0.3 * ring + 0.14 * fine ** 4 + 0.32 * np.clip(pores, 0, 3) + 0.1 * streak + 0.25 * lines, 0, 1)
     rgb = (light * (1 - k[..., None]) + dark * k[..., None]) * tone[..., None]
     joint = (np.abs(((U * planks) + 0.5) % 1 - 0.5) * size / planks < 0.7).astype(float)
-    rgb *= (1 - 0.35 * joint)[..., None]
-    height = -1.0 * ring - 0.4 * fine ** 4 - 0.9 * np.clip(pores, 0, 3) - 2.0 * joint + 0.3 * streak
+    rgb *= (1 - 0.6 * joint)[..., None]
+    height = -1.0 * ring - 0.4 * fine ** 4 - 0.9 * np.clip(pores, 0, 3) - 2.0 * joint + 0.3 * streak - 0.6 * lines
     return image('teak_albedo', rgb), image('teak_normal', normal_map(height, 0.9), data=True)
 
 
+def cane_textures(size=256, colour=(0.36, 0.23, 0.13), seed=9):
+    """Rattan cane along v: long fibre streaks and a darker node band once per tile. Albedo and normal map."""
+    streak = noise(size, 0.8, 40, seed)
+    wide = noise(size, 6, 80, seed + 1)
+    v = (np.arange(size) + 0.5) / size
+    band = np.exp(-((v - 0.5) / 0.02) ** 2)[:, None] * np.ones((1, size))
+    k = np.clip(0.9 + 0.08 * streak + 0.08 * wide - 0.35 * band, 0.3, 1.3)
+    rgb = np.array(colour) * k[..., None]
+    return image('cane_albedo', rgb), image('cane_normal', normal_map(0.4 * streak + 3.0 * band, 0.6), data=True)
+
+
 def thatch_textures(size=512, seed=5):
-    """Weathered rice-straw thatch: strands along v, dark gaps between them; albedo and normal map."""
+    """Weathered rice-straw thatch: strands along v, dark gaps between them. v runs once from the eave (0, darker and
+    greyer) to the ridge (1); u tiles. Albedo and normal map."""
     rng = np.random.default_rng(seed)
-    n = int(size * size * 0.014)
-    bright = rng.uniform(0.55, 1.25, n)
-    cov, val = strokes(size, n, (60, 220), seed, angle=math.pi / 2, spread=0.07, bend=0.12, width=0.9, values=bright)
+    n = int(size * size * 0.016)
+    bright = rng.uniform(0.55, 1.3, n)
+    cov, val = strokes(size, n, (50, 200), seed, angle=math.pi / 2, spread=0.08, bend=0.15, width=0.85, values=bright)
     cov /= np.percentile(cov, 98)
     gaps = np.clip(cov, 0, 1)
-    straw = np.array([0.50, 0.42, 0.29])
+    gold = np.array([0.56, 0.47, 0.31])
     grey = np.array([0.40, 0.385, 0.35])
-    weather = np.clip(0.5 + 0.35 * noise(size, 30, 60, seed + 1), 0, 1)
-    base = straw * (1 - 0.55 * weather[..., None]) + grey * 0.55 * weather[..., None]
+    v = ((np.arange(size) + 0.5) / size)[:, None]
+    weather = np.clip(0.3 + 0.5 * (1 - v) ** 1.5 + 0.25 * noise(size, 30, 60, seed + 1), 0, 1)
+    base = gold * (1 - weather[..., None]) + grey * weather[..., None]
+    base = base * (0.72 + 0.28 * v)[..., None]
     rgb = base * np.clip(val, 0.4, 1.4)[..., None] * (0.35 + 0.65 * gaps[..., None])
     height = 2.2 * np.clip(cov, 0, 1.3)
     return image('thatch_albedo', rgb), image('thatch_normal', normal_map(height, 1.6), data=True)
@@ -398,8 +442,52 @@ def sweep(name, stations, n=24, mat=None):
     return loft(name, rings, mat, caps='pole')
 
 
-def tube(name, pts, r, mat=None, sides=12, cyclic=False, caps=True, squash=1.0):
-    """A tube along a 3D polyline (parallel-transport frames); r is a radius or one per point; squash flattens it."""
+def shell(pts, t, bead=0.0):
+    """A thin-walled lathe profile: pts (r, z) run from the axis outwards; the wall is offset by t to their left
+    (inside a bowl or cup; negative t for the other side) and closed at the end by a rolled bead of radius bead,
+    or by a rounded thin edge when bead is 0."""
+    P = [Vector(q) for q in pts]
+    off = []
+    for i in range(len(P)):
+        a = (P[i] - P[i - 1]) if i else (P[1] - P[0])
+        b = (P[i + 1] - P[i]) if i < len(P) - 1 else (P[-1] - P[-2])
+        d = (a.normalized() + b.normalized()).normalized()
+        off.append(P[i] + Vector((-d.y, d.x)) * t)
+    off[0].x = 0.0
+    end, inner = P[-1], off[-1]
+    d = (end - P[-2]).normalized()
+    if bead:  # outer side, over the top, down the inner side
+        c = (end + inner) / 2 + d * (bead * 0.4)
+        arc = [c + Vector((math.cos(math.radians(a)), math.sin(math.radians(a)))) * bead for a in np.linspace(-80, 260, 15)]
+    else:
+        c = (end + inner) / 2
+        arc = [c + (end - c) * math.cos(a) + d * abs(t) * 0.5 * math.sin(a) for a in np.linspace(0.45, math.pi - 0.45, 4)]
+    return [tuple(q) for q in P] + [tuple(q) for q in arc] + [tuple(q) for q in reversed(off)]
+
+
+def strip(name, path, hw, ht, mat=None, wdir=(1, 0, 0), p=8):
+    """A flat strip along a 3D path: half width hw (scalar or per point) along wdir, half thickness ht (hinges, tabs)."""
+    P = [Vector(q) for q in path]
+    hws = list(hw) if isinstance(hw, (list, tuple)) else [hw] * len(P)
+    W = Vector(wdir)
+    rings = []
+    for i, q in enumerate(P):
+        tg = (P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]).normalized()
+        w = (W - tg * W.dot(tg)).normalized()
+        n = tg.cross(w)
+        ring = []
+        for k in range(16):
+            a = 2 * math.pi * k / 16
+            c, s_ = math.cos(a), math.sin(a)
+            ring.append(q + w * hws[i] * math.copysign(abs(c) ** (2 / p), c) + n * ht * math.copysign(abs(s_) ** (2 / p), s_))
+        rings.append(ring)
+    return loft(name, rings, mat)
+
+
+def tube(name, pts, r, mat=None, sides=12, cyclic=False, caps=True, squash=1.0, folds=None, uv_tile=0.28):
+    """A tube along a 3D polyline (parallel-transport frames); r is a radius or one per point; squash flattens it;
+    folds=(amplitude, count, seed) ripples the radius around and along it (loose cloth). UVs: u around, v along
+    the length, uv_tile metres per repeat (cane, bamboo grain)."""
     P = [Vector(p) for p in pts]
     N = len(P)
     rs = list(r) if isinstance(r, (list, tuple)) else [r] * N
@@ -416,9 +504,21 @@ def tube(name, pts, r, mat=None, sides=12, cyclic=False, caps=True, squash=1.0):
             nrm = tang[i - 1].rotation_difference(tang[i]) @ nrm
             nrm = (nrm - tang[i] * nrm.dot(tang[i])).normalized()
         bi = tang[i].cross(nrm)
-        rings.append([P[i] + (nrm * math.cos(2 * math.pi * k / sides) * squash + bi * math.sin(2 * math.pi * k / sides)) * rs[i]
-                      for k in range(sides)])
-    return loft(name, rings, mat, caps=('pole' if caps else None), cyclic=cyclic)
+        ring = []
+        for k in range(sides):
+            a = 2 * math.pi * k / sides
+            f = 1.0
+            if folds:
+                amp, cnt, sd = folds
+                f += amp * math.sin(cnt * a + sd + 1.7 * math.sin(i * 0.9 + sd)) * (0.6 + 0.4 * math.sin(i * 1.3 + 2 * sd))
+            ring.append(P[i] + (nrm * math.cos(a) * squash + bi * math.sin(a)) * rs[i] * f)
+        rings.append(ring)
+    circ = 2 * math.pi * sum(rs) / N
+    u = [k / sides * max(1, round(circ / uv_tile * 4)) / 4 for k in range(sides + 1)]
+    v = [0.0]
+    for i in range(1, N + (1 if cyclic else 0)):
+        v.append(v[-1] + (P[i % N] - P[i - 1]).length / uv_tile)
+    return loft(name, rings, mat, caps=('pole' if caps else None), cyclic=cyclic, u=u, v=v)
 
 
 def join(objs, name):
@@ -758,6 +858,8 @@ def render_previews(glb, shots, look='sunset', arrange=None, ground=(0.05, 0.04,
         L.energy = watts
         L.color = colour[:3]
         L.shadow_soft_size = radius
+        lo = bpy.context.active_object  # stand-in lights must not show as discs, even through glass
+        lo.visible_camera = lo.visible_glossy = lo.visible_transmission = False
 
     bpy.ops.object.camera_add()
     cam = bpy.context.active_object
