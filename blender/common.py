@@ -61,9 +61,16 @@ def material(name, colour):
 
 
 def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough=0.8, metal=0.0,
-        emission=None, alpha=None, transmission=0.0, ior=1.5):
-    """A glTF-friendly Principled material: colour (x albedo texture), tangent normal map, emission, blended alpha."""
+        emission=None, alpha=None, transmission=0.0, ior=1.5, tex_alpha=None, emit_tex=False, sheen=0.0,
+        coat=0.0, double=False):
+    """A glTF-friendly Principled material: colour (x albedo texture), tangent normal map, emission, blended alpha.
+
+    tex_alpha 'blend' or 'clip' takes alpha from the albedo texture (glTF BLEND, or MASK at 0.5); emit_tex uses the
+    albedo texture as the emissive texture too (times emission); sheen and coat export as KHR_materials_sheen and
+    _clearcoat; double exports doubleSided (cards).
+    """
     mat = material(name, colour)
+    mat.use_backface_culling = not double
     nt = mat.node_tree
     bsdf = nt.nodes['Principled BSDF']
     bsdf.inputs['Roughness'].default_value = rough
@@ -85,6 +92,18 @@ def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough
             nt.links.new(mix.outputs[2], bsdf.inputs['Base Color'])
         else:
             nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+        if tex_alpha:
+            src = tex.outputs['Alpha']
+            if tex_alpha == 'clip':  # Math Round: the exporter writes alphaMode MASK, cutoff 0.5
+                rnd = nt.nodes.new('ShaderNodeMath')
+                rnd.operation = 'ROUND'
+                nt.links.new(src, rnd.inputs[0])
+                src = rnd.outputs[0]
+            nt.links.new(src, bsdf.inputs['Alpha'])
+            mat.surface_render_method = 'BLENDED' if tex_alpha == 'blend' else 'DITHERED'
+        if emit_tex:
+            nt.links.new(tex.outputs['Color'], bsdf.inputs['Emission Color'])
+            bsdf.inputs['Emission Strength'].default_value = emission[3] if emission and len(emission) > 3 else 1.0
     if normal:
         tex = nt.nodes.new('ShaderNodeTexImage')
         tex.image = normal
@@ -94,7 +113,7 @@ def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough
         nm.inputs['Strength'].default_value = strength
         nt.links.new(tex.outputs['Color'], nm.inputs['Color'])
         nt.links.new(nm.outputs['Normal'], bsdf.inputs['Normal'])
-    if emission:
+    if emission and not emit_tex:
         bsdf.inputs['Emission Color'].default_value = tuple(emission[:3]) + (1.0,)
         bsdf.inputs['Emission Strength'].default_value = emission[3] if len(emission) > 3 else 1.0
     if alpha is not None:
@@ -103,6 +122,13 @@ def pbr(name, colour=(1, 1, 1, 1), albedo=None, normal=None, strength=1.0, rough
     if transmission:  # exported as KHR_materials_transmission / _ior
         bsdf.inputs['Transmission Weight'].default_value = transmission
         bsdf.inputs['IOR'].default_value = ior
+    if sheen:  # a faint fibre fuzz at grazing angles
+        bsdf.inputs['Sheen Weight'].default_value = sheen
+        bsdf.inputs['Sheen Roughness'].default_value = 0.6
+        bsdf.inputs['Sheen Tint'].default_value = tuple(colour[:3]) + (1.0,)
+    if coat:  # oiled satin finish
+        bsdf.inputs['Coat Weight'].default_value = coat
+        bsdf.inputs['Coat Roughness'].default_value = 0.3
     return mat
 
 
@@ -162,44 +188,57 @@ def normal_map(h, strength):
     return n * 0.5 + 0.5
 
 
-def image(name, rgb, data=False):
-    """A packed Blender image from an (h, w, 3) array in 0..1 (sRGB-encoded for colour, raw for data)."""
+def image(name, rgb, data=False, alpha=None):
+    """A packed Blender image from an (h, w, 3) array in 0..1 (sRGB-encoded for colour, raw for data), with an
+    optional (h, w) alpha channel."""
     h, w = rgb.shape[:2]
-    img = bpy.data.images.new(name, w, h, alpha=False)
+    img = bpy.data.images.new(name, w, h, alpha=alpha is not None)
     if data:
         img.colorspace_settings.name = 'Non-Color'
     px = np.ones((h, w, 4), np.float32)
     px[..., :3] = np.clip(rgb, 0, 1)
+    if alpha is not None:
+        px[..., 3] = np.clip(alpha, 0, 1)
     img.pixels.foreach_set(px.ravel())
     img.pack()
     return img
 
 
 def fibre_textures(size=1024, seed=1, mesh=96):
-    """Moulded pressed-straw pulp at real scale (one tile ~ 8 cm): a near-white albedo with fine, low-contrast fibre
-    speckle (tint it per material) and a normal map with sub-millimetre fibres and a faint mould-mesh emboss."""
-    fine, _ = strokes(size, int(size * size * 0.05), (3, 14), seed, bend=0.6, width=0.55)
-    fine = np.clip(fine / np.percentile(fine, 99.5), 0, 1.3)
-    dark, _ = strokes(size, int(size * size * 0.0016), (3, 10), seed + 1, bend=1.0, width=0.6)
-    pale, _ = strokes(size, int(size * size * 0.002), (3, 9), seed + 2, bend=0.8, width=0.55)
-    dark = np.clip(dark / np.percentile(dark, 99.7), 0, 1)
+    """Moulded pressed-straw pulp at real scale (one tile ~ 8 cm, 1 px ~ 0.08 mm). Albedo: near white (tint it per
+    material), darker straw flecks of 1-3 mm, short pale fibres, broad soft mottling. Normal: a web of short random
+    fibres (0.5-2 mm, low amplitude), the flecks standing a little proud, and the forming screen's plain-weave mesh
+    (~0.8 mm pitch; strong only where a material turns the normal map up, i.e. the rough inner faces)."""
+    fib, _ = strokes(size, int(size * size * 0.035), (6, 26), seed, bend=0.7, width=0.55)
+    fib = np.clip(fib / np.percentile(fib, 99.5), 0, 1.3)
+    fleck, _ = strokes(size, int(size * size * 0.0003), (10, 30), seed + 1, bend=0.6, width=1.6)   # straw chips
+    fleck = np.clip(fleck / np.percentile(fleck, 99.8), 0, 1) ** 0.7
+    dots, _ = strokes(size, int(size * size * 0.002), (1, 4), seed + 6, width=0.8)                  # fine speckle
+    dots = np.clip(dots / np.percentile(dots, 99.7), 0, 1)
+    pale, _ = strokes(size, int(size * size * 0.0012), (8, 24), seed + 2, bend=0.8, width=0.6)
     pale = np.clip(pale / np.percentile(pale, 99.7), 0, 1)
-    mottle = noise(size, 40, seed=seed + 3)
-    grain = noise(size, 4, seed=seed + 4)
-    v = 0.94 + 0.012 * mottle + 0.01 * grain - 0.025 * fine
+    broad = noise(size, 110, seed=seed + 3)
+    mid = noise(size, 22, seed=seed + 4)
+    grain = noise(size, 1.2, seed=seed + 5)
+    v = 0.962 + 0.02 * broad + 0.012 * mid + 0.008 * grain - 0.035 * fib
     rgb = np.repeat(v[..., None], 3, -1)
-    fleck = np.array([0.62, 0.5, 0.36])
-    rgb = rgb * (1 - 0.35 * dark[..., None]) + fleck * 0.35 * dark[..., None]
-    rgb = rgb * (1 - 0.25 * pale[..., None]) + 0.25 * pale[..., None]
-    t = (np.arange(size) + 0.5) / size * 2 * np.pi * mesh
-    grid = (np.sin(t)[None, :] ** 2) * (np.sin(t)[:, None] ** 2)  # the forming screen's woven mesh, very faint
-    height = _gauss(fine + 0.3 * dark, 0.5) + 0.25 * grid + 0.04 * grain
-    return image('pulp_albedo', rgb), image('pulp_normal', normal_map(height, 0.8), data=True)
+    tone = np.array([0.6, 0.47, 0.3])
+    rgb = rgb * (1 - 0.45 * fleck[..., None]) + tone * 0.45 * fleck[..., None]
+    rgb = rgb * (1 - 0.25 * dots[..., None]) + tone * 0.25 * dots[..., None]
+    rgb = rgb * (1 - 0.3 * pale[..., None]) + 0.3 * pale[..., None]
+    U = (np.arange(size) + 0.5) / size * mesh
+    fu, cu = U % 1, np.floor(U).astype(int)
+    hu = np.clip(1 - ((fu - 0.5) / 0.32) ** 2, 0, 1)            # a wire's round profile across it
+    top = ((cu[None, :] + cu[:, None]) % 2) == 0                # plain weave: wires alternate over and under
+    wv, wu = hu[None, :] * np.ones((size, 1)), hu[:, None] * np.ones((1, size))
+    screen = np.where(top, np.maximum(wu, 0.55 * wv), np.maximum(0.55 * wu, wv))
+    height = 1.1 * _gauss(fib, 0.5) + 0.7 * fleck + 0.3 * dots + 0.3 * screen + 0.25 * mid + 0.15 * grain
+    return image('pulp_albedo', rgb), image('pulp_normal', normal_map(height, 0.9), data=True)
 
 
-def weave_textures(size=512, strands=16, kind='basket', colour=(0.55, 0.37, 0.21), seed=7):
-    """Tileable woven strands: 'basket' (rattan over-under) or 'twill' (split-bamboo herringbone, fak).
-    Returns albedo and normal map."""
+def weave_textures(size=512, strands=16, kind='basket', colour=(0.55, 0.37, 0.21), seed=7, contrast=0.5):
+    """Tileable woven strands: 'basket' (rattan over-under) or 'twill' (split-bamboo herringbone, fak); contrast is
+    how dark the gaps between strands go. Returns albedo and normal map."""
     u = (np.arange(size) + 0.5) / size * strands
     U, Vv = np.meshgrid(u, u)
     fu, fv = U % 1, Vv % 1
@@ -217,33 +256,30 @@ def weave_textures(size=512, strands=16, kind='basket', colour=(0.55, 0.37, 0.21
     tone = 0.85 + 0.3 * rng.random((strands, strands))
     t = np.where(top, tone[cv % strands, 0], tone[0, cu % strands])
     streak = noise(size, 0.7, 12, seed) * 0.05
-    rgb = np.array(colour) * (t * (0.5 + 0.5 * height) + streak)[..., None]
+    rgb = np.array(colour) * (t * (1 - contrast + contrast * np.clip(height, 0, 1.1)) + streak)[..., None]
     return image(f'{kind}_albedo', rgb), image(f'{kind}_normal', normal_map(height * 3.0, 1.0), data=True)
 
 
-def teak_textures(size=1024, seed=3, planks=8):
-    """Dark teak: glued boards along v with ring figure and pores; albedo and normal map."""
-    rng = np.random.default_rng(seed)
+def teak_textures(size=1024, seed=3, nsize=512):
+    """Oiled teak, long grain along v (the planks are modelled, so no joints): warm golden brown with darker streaks,
+    a soft flat-sawn figure, fine dark grain lines and pores. Albedo at size, normal map at nsize."""
     u = (np.arange(size) + 0.5) / size
     U = np.broadcast_to(u[None, :], (size, size))
-    pid = np.floor(U * planks).astype(int)
-    tone = rng.uniform(0.88, 1.1, planks)[pid]
-    freq = rng.integers(5, 12, planks)[pid]
-    phase = rng.uniform(0, 1, planks)[pid]
-    warp = noise(size, 14, 160, seed) * 0.55 + noise(size, 40, 400, seed + 1) * 0.9
-    ring = 0.5 + 0.5 * np.sin(2 * np.pi * ((U * planks) % 1 * freq * 1.1 + warp + phase))
-    ring = ring ** 6
-    pores = noise(size, 0.6, 30, seed + 2)
-    streak = noise(size, 3, 90, seed + 3)
-    light, dark = np.array([0.5, 0.33, 0.18]), np.array([0.2, 0.12, 0.065])
-    fine = 0.5 + 0.5 * np.sin(2 * np.pi * ((U * planks) % 1 * freq * 1.7 + warp * 1.3 + 0.37 * phase))
-    lines = (np.abs(noise(size, 1.0, 70, seed + 4)) < 0.06).astype(float)  # crisp fine grain lines
-    k = np.clip(0.28 + 0.3 * ring + 0.14 * fine ** 4 + 0.32 * np.clip(pores, 0, 3) + 0.1 * streak + 0.25 * lines, 0, 1)
-    rgb = (light * (1 - k[..., None]) + dark * k[..., None]) * tone[..., None]
-    joint = (np.abs(((U * planks) + 0.5) % 1 - 0.5) * size / planks < 0.7).astype(float)
-    rgb *= (1 - 0.6 * joint)[..., None]
-    height = -1.0 * ring - 0.4 * fine ** 4 - 0.9 * np.clip(pores, 0, 3) - 2.0 * joint + 0.3 * streak - 0.6 * lines
-    return image('teak_albedo', rgb), image('teak_normal', normal_map(height, 0.9), data=True)
+    warp = noise(size, 18, 220, seed) * 0.6 + noise(size, 60, 500, seed + 1) * 1.1
+    ring = (0.5 + 0.5 * np.sin(2 * np.pi * (U * 9 + warp))) ** 5          # growth rings, gently wandering
+    fine = (0.5 + 0.5 * np.sin(2 * np.pi * (U * 23 + warp * 1.4 + 0.3))) ** 3
+    pores = np.clip(noise(size, 0.6, 26, seed + 2), 0, 3)
+    streak = noise(size, 5, 160, seed + 3)
+    band = noise(size, 40, 900, seed + 5)                                  # broad colour bands along the board
+    lines = (np.abs(noise(size, 0.9, 80, seed + 4)) < 0.05).astype(float)
+    light, dark = np.array([0.74, 0.5, 0.27]), np.array([0.42, 0.25, 0.12])
+    k = np.clip(0.3 + 0.28 * ring + 0.1 * fine + 0.22 * pores + 0.12 * streak + 0.1 * band + 0.3 * lines, 0, 1)
+    rgb = (light * (1 - k[..., None]) + dark * k[..., None]) * (1 + 0.04 * band)[..., None]
+    height = -1.0 * ring - 0.3 * fine - 1.1 * pores + 0.3 * streak - 0.7 * lines
+    if nsize != size:  # box-downsample the height before the normal map
+        f = size // nsize
+        height = height.reshape(nsize, f, nsize, f).mean((1, 3))
+    return image('teak_albedo', rgb), image('teak_normal', normal_map(height, 0.9 * nsize / size * 1.6), data=True)
 
 
 def cane_textures(size=256, colour=(0.36, 0.23, 0.13), seed=9):
@@ -257,24 +293,90 @@ def cane_textures(size=256, colour=(0.36, 0.23, 0.13), seed=9):
     return image('cane_albedo', rgb), image('cane_normal', normal_map(0.4 * streak + 3.0 * band, 0.6), data=True)
 
 
+STRAW_GOLD, STRAW_GREY = np.array([0.80, 0.66, 0.42]), np.array([0.58, 0.56, 0.51])   # sRGB: dry cogon, weathered
+
+
 def thatch_textures(size=512, seed=5):
-    """Weathered rice-straw thatch: strands along v, dark gaps between them. v runs once from the eave (0, darker and
-    greyer) to the ridge (1); u tiles. Albedo and normal map."""
+    """One thatch course (a cogon-grass panel): straw strands along v, clumped across u, from the cut butt (v = 0:
+    darker cut ends, most weathered) to the tucked top (v = 1); u tiles. Desaturated golden straw greyed by weather."""
     rng = np.random.default_rng(seed)
-    n = int(size * size * 0.016)
-    bright = rng.uniform(0.55, 1.3, n)
-    cov, val = strokes(size, n, (50, 200), seed, angle=math.pi / 2, spread=0.08, bend=0.15, width=0.85, values=bright)
-    cov /= np.percentile(cov, 98)
-    gaps = np.clip(cov, 0, 1)
-    gold = np.array([0.56, 0.47, 0.31])
-    grey = np.array([0.40, 0.385, 0.35])
-    v = ((np.arange(size) + 0.5) / size)[:, None]
-    weather = np.clip(0.3 + 0.5 * (1 - v) ** 1.5 + 0.25 * noise(size, 30, 60, seed + 1), 0, 1)
-    base = gold * (1 - weather[..., None]) + grey * weather[..., None]
-    base = base * (0.72 + 0.28 * v)[..., None]
-    rgb = base * np.clip(val, 0.4, 1.4)[..., None] * (0.35 + 0.65 * gaps[..., None])
-    height = 2.2 * np.clip(cov, 0, 1.3)
-    return image('thatch_albedo', rgb), image('thatch_normal', normal_map(height, 1.6), data=True)
+    n = int(size * size * 0.02)
+    bright = rng.uniform(0.6, 1.25, n)
+    cov, val = strokes(size, n, (60, 260), seed, angle=math.pi / 2, spread=0.1, bend=0.25, width=0.8, values=bright)
+    cov = np.clip(cov / np.percentile(cov, 97), 0, 1.2)
+    clump = noise(size, 7, 400, seed + 1)                                    # bunches across the panel
+    v = ((np.arange(size) + 0.5) / size)[:, None] * np.ones((1, size))
+    ends, _ = strokes(size, int(size * size * 0.004), (2, 6), seed + 2, width=0.7)  # cut ends at the butt
+    ends = np.clip(ends / np.percentile(ends, 99), 0, 1) * np.clip(1 - v / 0.12, 0, 1)
+    weather = np.clip(0.45 - 0.35 * v + 0.2 * noise(size, 30, 80, seed + 3), 0, 1)
+    base = STRAW_GOLD * (1 - weather[..., None]) + STRAW_GREY * weather[..., None]
+    shade = (0.55 + 0.45 * cov) * np.clip(val, 0.5, 1.3) * (0.9 + 0.1 * clump) * (0.8 + 0.2 * np.clip(v / 0.1, 0, 1))
+    rgb = base * shade[..., None] * (1 - 0.35 * ends[..., None])
+    height = 2.0 * cov + 0.8 * clump - 1.2 * ends
+    return image('thatch_albedo', rgb), image('thatch_normal', normal_map(height, 1.4), data=True)
+
+
+def fringe_texture(w=512, h=256, seed=8, clumps=90):
+    """Hanging straw ends for alpha-clipped ribbon cards: v = 1 is the top edge (tucked under the course), the
+    strands hang down in clumps and stop at a roughly trimmed, uneven edge. RGBA (alpha = strand coverage)."""
+    rng = np.random.default_rng(seed)
+    cov = np.zeros((h, w))
+    acc = np.zeros((h, w))
+    rows = np.arange(h)
+    for c in range(clumps):
+        cx, clen, lean = rng.uniform(0, w), rng.uniform(0.55, 0.95), rng.uniform(-14, 14)
+        for _ in range(rng.integers(12, 30)):
+            x0 = cx + rng.normal(0, w / clumps * 0.45)
+            ln = int(h * min(0.99, clen + rng.normal(0, 0.06)))
+            t = rows[:ln] / h                                     # 0 at the top, down the strand
+            x = x0 + lean * t ** 2 + rng.normal(0, 1.5) * t
+            ix = np.mod(np.round(x).astype(int), w)
+            iy = h - 1 - rows[:ln]
+            b = rng.uniform(0.45, 1.35)
+            np.add.at(cov, (iy, ix), 1.0)
+            np.add.at(acc, (iy, ix), b)
+    soft = _gauss(cov, 0.6)
+    val = _gauss(acc, 0.6) / np.maximum(soft, 1e-4)
+    alpha = np.clip(soft * 1.6, 0, 1)
+    v = (np.arange(h)[:, None] + 0.5) / h
+    weather = np.clip(0.55 - 0.3 * v, 0, 1)
+    base = STRAW_GOLD * (1 - weather[..., None]) + STRAW_GREY * weather[..., None]
+    rgb = base * (np.clip(val, 0.5, 1.3) * (0.6 + 0.4 * v))[..., None]
+    return image('fringe_albedo', rgb, alpha=alpha)
+
+
+def flame_texture(size=256, seed=12):
+    """Two soft flame shapes side by side (u 0-0.5 a tall licking flame, 0.5-1 a forked one), for additive cards:
+    alpha falls off softly at every edge; colour runs yellow-white in the core to orange and a deeper orange at the
+    tongue tips. RGBA, size wide, 2 * size tall; v = 0 is the flame's base."""
+    rng = np.random.default_rng(seed)
+    W, H = size, 2 * size
+    x = (np.arange(W) + 0.5) / W
+    v = ((np.arange(H) + 0.5) / H)[:, None] * np.ones((1, W))
+    rgb = np.zeros((H, W, 3))
+    alpha = np.zeros((H, W))
+    orange, white, tip = np.array([1.0, 0.5, 0.1]), np.array([1.0, 0.93, 0.72]), np.array([0.95, 0.3, 0.04])
+    # each half: tongues of (x centre, height, half width at the base, lean); the first is the body
+    for half, tongues in ((0, ((0.5, 0.95, 0.36, 0.08), (0.36, 0.55, 0.16, -0.1), (0.66, 0.68, 0.15, 0.16))),
+                          (1, ((0.5, 0.72, 0.4, -0.04), (0.33, 0.9, 0.18, -0.12), (0.68, 0.82, 0.17, 0.1), (0.52, 0.6, 0.12, 0.2)))):
+        X = np.broadcast_to(((x - 0.5 * half) * 2)[None, :], (H, W))   # 0..1 within this half
+        sel = (X[0] >= 0) & (X[0] < 1)
+        a = np.zeros((H, W))
+        for i, (cx, ht, w0, lean) in enumerate(tongues):
+            t = np.clip(v / ht, 0, 1.2)
+            sway = lean * t ** 1.6 + 0.025 * np.sin(t * 9 + rng.uniform(0, 6)) * t
+            width = w0 * np.sin(np.pi / 2 * np.clip(t / 0.25, 0, 1)) ** 0.6 * np.clip(1 - t, 0, 1) ** 0.8 + 0.004
+            k = np.clip(1 - np.abs(X - cx - sway) / width, 0, 1) * (t < 1)
+            a = np.maximum(a, k ** 0.7)
+            if i == 0:
+                core = np.clip((k - 0.3) / 0.5, 0, 1) * np.clip(1.1 - t / 0.65, 0, 1)
+        a = _gauss(a * np.clip(v / 0.06, 0, 1), 2.2)
+        c = orange * (1 - core[..., None]) + white * core[..., None]
+        hi = np.clip((v - 0.45) * 2, 0, 1)[..., None]
+        c = c * (1 - hi) + tip * hi
+        rgb[:, sel] = c[:, sel]
+        alpha[:, sel] = a[:, sel]
+    return image('flame_albedo', rgb, alpha=alpha)
 
 
 # ---------------------------------------------------------------- geometry
@@ -486,7 +588,7 @@ def strip(name, path, hw, ht, mat=None, wdir=(1, 0, 0), p=8):
 
 def tube(name, pts, r, mat=None, sides=12, cyclic=False, caps=True, squash=1.0, folds=None, uv_tile=0.28):
     """A tube along a 3D polyline (parallel-transport frames); r is a radius or one per point; squash flattens it;
-    folds=(amplitude, count, seed) ripples the radius around and along it (loose cloth). UVs: u around, v along
+    folds=(amplitude or one per point, count, seed) ripples the radius around and along it (loose cloth). UVs: u around, v along
     the length, uv_tile metres per repeat (cane, bamboo grain)."""
     P = [Vector(p) for p in pts]
     N = len(P)
@@ -510,6 +612,7 @@ def tube(name, pts, r, mat=None, sides=12, cyclic=False, caps=True, squash=1.0, 
             f = 1.0
             if folds:
                 amp, cnt, sd = folds
+                amp = amp[i] if isinstance(amp, (list, tuple)) else amp   # per point: folds bunch at a joint
                 f += amp * math.sin(cnt * a + sd + 1.7 * math.sin(i * 0.9 + sd)) * (0.6 + 0.4 * math.sin(i * 1.3 + 2 * sd))
             ring.append(P[i] + (nrm * math.cos(a) * squash + bi * math.sin(a)) * rs[i] * f)
         rings.append(ring)
@@ -668,9 +771,11 @@ def _gltf_output(tree):
     return node
 
 
-def bake_ao(objs, size=512, ground=True, distance=0.8, samples=128, margin=0.004, name=None, ground_z=0.0):
+def bake_ao(objs, size=512, ground=True, distance=0.8, samples=128, margin=0.004, name=None, ground_z=0.0, ss=2):
     """Bake ambient occlusion for objs into one shared atlas on a second UV map 'AO' (glTF TEXCOORD_1), wired to every
-    material as glTF occlusion. UV map 'UVMap' (texture detail) is kept; objects without one get a smart projection."""
+    material as glTF occlusion. UV map 'UVMap' (texture detail) is kept; objects without one get a smart projection.
+    The bake runs at ss x size and is averaged down, so islands only a pixel or two wide (a 0.7 mm seam) still get
+    their own texels instead of a margin fill from a neighbouring island."""
     objs = list(objs) if isinstance(objs, (list, tuple)) else [objs]
     scene = bpy.context.scene
     for o in objs:
@@ -683,7 +788,7 @@ def bake_ao(objs, size=512, ground=True, distance=0.8, samples=128, margin=0.004
         bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, ground_z))
         floor = bpy.context.active_object
 
-    img = bpy.data.images.new((name or objs[0].name) + '_ao', size, size)
+    img = bpy.data.images.new((name or objs[0].name) + '_ao', size * ss, size * ss)
     mats = []
     for o in objs:
         for m in o.data.materials:
@@ -710,9 +815,12 @@ def bake_ao(objs, size=512, ground=True, distance=0.8, samples=128, margin=0.004
     scene.render.engine = 'CYCLES'
     scene.cycles.device = 'CPU'
     scene.cycles.samples = samples
-    bpy.ops.object.bake(type='AO', margin=4, uv_layer='AO')
-    px = np.array(img.pixels[:], np.float32).reshape(size, size, 4)  # a light blur takes out the bake noise (it also
-    px[..., :3] = _gauss(px[..., 0], 0.9)[..., None]                  # shrinks the WebP); the 4 px margin absorbs it
+    bpy.ops.object.bake(type='AO', margin=4 * ss, uv_layer='AO')
+    big = np.array(img.pixels[:], np.float32).reshape(size * ss, size * ss, 4)[..., 0]
+    ao = big.reshape(size, ss, size, ss).mean((1, 3))
+    img.scale(size, size)
+    px = np.ones((size, size, 4), np.float32)   # a light blur takes out the bake noise (it also shrinks the WebP)
+    px[..., :3] = _gauss(ao, 0.9)[..., None]
     img.pixels.foreach_set(px.ravel())
     img.pack()
     if floor:
@@ -722,14 +830,16 @@ def bake_ao(objs, size=512, ground=True, distance=0.8, samples=128, margin=0.004
     return img
 
 
-def export_glb(objs, path, quality=75):
-    """Export objs as a Draco-compressed (level 6) GLB with WebP textures; returns the file size in bytes."""
+def export_glb(objs, path, quality=75, pos_bits=14, norm_bits=10):
+    """Export objs as a Draco-compressed (level 6) GLB with WebP textures; returns the file size in bytes.
+    pos_bits, norm_bits: Draco quantization of positions (per primitive bounding box) and normals."""
     for o in bpy.context.scene.objects:
         o.select_set(o in objs)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     bpy.ops.export_scene.gltf(
         filepath=path, export_format='GLB', use_selection=True, export_apply=True,
         export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
+        export_draco_position_quantization=pos_bits, export_draco_normal_quantization=norm_bits,
         export_image_format='WEBP', export_image_quality=quality, export_cameras=False, export_lights=False)
     return os.path.getsize(path)
 
@@ -756,11 +866,11 @@ def glb_triangles(path):
                for node in doc.get('nodes', []) if 'mesh' in node for p in doc['meshes'][node['mesh']]['primitives'])
 
 
-MAX_TOTAL_BYTES, MAX_TOTAL_TRIS = int(1.5 * 1024 * 1024), 150_000
+MAX_TOTAL_BYTES, MAX_TOTAL_TRIS = int(1.5 * 1024 * 1024), 200_000
 
 
 def check_budget(models_dir):
-    """All models/*.glb together: at most 1.5 MB and 150k triangles."""
+    """All models/*.glb together: at most 1.5 MB and 200k triangles."""
     files = sorted(f for f in os.listdir(models_dir) if f.endswith('.glb'))
     size = sum(os.path.getsize(os.path.join(models_dir, f)) for f in files)
     tris = sum(glb_triangles(os.path.join(models_dir, f)) for f in files)
@@ -796,6 +906,26 @@ def _show_ao(mat):
         tree.links.new(mix.outputs[2], base)
 
 
+def _thin_glass(mat):
+    """glTF transmission without KHR_materials_volume is thin-walled: three.js tints what is behind the glass but does
+    not bend it. Cycles would refract through the modelled wall like a lens, so for the preview the glass becomes a
+    tinted transparent surface plus a Fresnel-weighted gloss at its glTF IOR."""
+    tree = mat.node_tree
+    bsdf = tree.nodes.get('Principled BSDF') if tree else None
+    if bsdf is None or bsdf.inputs['Transmission Weight'].default_value <= 0:
+        return
+    out = next(n for n in tree.nodes if n.type == 'OUTPUT_MATERIAL')
+    tr, gl = tree.nodes.new('ShaderNodeBsdfTransparent'), tree.nodes.new('ShaderNodeBsdfGlossy')
+    fr, mix = tree.nodes.new('ShaderNodeFresnel'), tree.nodes.new('ShaderNodeMixShader')
+    tr.inputs['Color'].default_value = [c ** 0.5 for c in bsdf.inputs['Base Color'].default_value]   # a ray crosses two walls
+    gl.inputs['Roughness'].default_value = bsdf.inputs['Roughness'].default_value
+    fr.inputs['IOR'].default_value = bsdf.inputs['IOR'].default_value
+    tree.links.new(fr.outputs[0], mix.inputs[0])
+    tree.links.new(tr.outputs[0], mix.inputs[1])
+    tree.links.new(gl.outputs[0], mix.inputs[2])
+    tree.links.new(mix.outputs[0], out.inputs['Surface'])
+
+
 def render_previews(glb, shots, look='sunset', arrange=None, ground=(0.05, 0.04, 0.03, 1), ground_z=0.0,
                     lights=(), exposure=0.0, samples=64):
     """Re-import the exported GLB into an empty scene (so the previews show what the film gets) and render each shot.
@@ -810,6 +940,7 @@ def render_previews(glb, shots, look='sunset', arrange=None, ground=(0.05, 0.04,
     assert any(o.type == 'MESH' for o in scene.objects), 're-imported GLB has no mesh'
     for mat in bpy.data.materials:
         _show_ao(mat)
+        _thin_glass(mat)
     if arrange:
         arrange({o.name: o for o in scene.objects})
 
