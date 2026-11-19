@@ -74,12 +74,12 @@ export function createPost(THREE, renderer, scene, camera, tier) {
     render(u) {
       bloom.strength = bloomBase * (0.7 + 0.3 * u.glow);
       rays.uniforms.uSun.value = u.sunScreen;
-      rays.uniforms.uAmt.value = 0.45 * u.sun * (u.facing ?? 1);
+      rays.uniforms.uAmt.value = 0.35 * u.sun * (u.facing ?? 1);
       grade.uniforms.uSmoke.value = u.smoke;
       composer.render(0);
     },
-    resize(w, h, dpr) {
-      size.set(Math.round(w * dpr), Math.round(h * dpr));
+    resize() {
+      renderer.getDrawingBufferSize(size);                       // exact buffer size: a 1 px mismatch makes OutputPass resample (noisy, blurry)
       composer.setSize(size.x, size.y);
       fxaaRes();
     },

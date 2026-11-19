@@ -437,7 +437,7 @@ function build(canvas, renderer, tier) {
     smoke.visible = U.uS.value > 0.001; fibres.visible = U.uFibA.value > 0.001 && U.uFibOut.value < 1;
 
     const form = smooth(0.8, 1, P.fold);
-    U.uHalo.value = form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
+    U.uHalo.value = 0.5 * form * (1 - smooth(0.72, 0.8, q));  // trimmed: the halo sat behind the caption text packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
     packMats.forEach((m) => { m.opacity = form; });
     pack.forEach((g, i) => {
       const o = OBJ[i], e = clamp01((P.fly - i * 0.08) / 0.84) ** 2.2;  // slow start keeps them just ahead of the camera
@@ -466,8 +466,9 @@ function build(canvas, renderer, tier) {
 
   // Called once post.js has loaded (High/Ultra); the new pipeline takes over from the plain renderer.render.
   function attachPost(mod) {
-    post = mod.createPost(THREE, renderer, scene, camera, tier);
-    resize(true);
+    const next = mod.createPost(THREE, renderer, scene, camera, tier);
+    post = next;
+    try { resize(true); } catch (e) { post = null; next.dispose(); throw e; }  // never leave a half-attached post
   }
 
   function resize(force) {
@@ -577,7 +578,7 @@ async function boot() {
   document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
   // with ?film=video for capture (see VIDEO above).
-  window.scFilm = { get tier() { return film.tier.name; }, _degrade: degrade, _memory: () => ({ ...film.renderer.info.memory }),  // _ hooks: console checks of the step-down
+  window.scFilm = { get tier() { return film.tier.name; }, ...(VIDEO || BENCH ? { _degrade: degrade, _memory: () => ({ ...film.renderer.info.memory }) } : {}),  // console hooks for the step-down check, not on real visits
      render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
   if (VIDEO || BENCH) root.classList.add('film');
   if (BENCH) raf = requestAnimationFrame(benchFrame);
