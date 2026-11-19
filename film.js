@@ -2,7 +2,7 @@
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
 // Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
 import { params, rng, counter, shouldUse3D, tooSlow, through } from './timeline.js';
-import { HEAD, SOFT, DUST, FLAME, FLAME_F, NOISE, FRONT_V, FRONT_F, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, TRAIL, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP } from './shaders.js';
+import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, TRAIL, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP } from './shaders.js';
 import { TIERS, pickTier, nextStep, parseFilmFlags } from './tiers.js';
 
 const root = document.documentElement;
@@ -69,13 +69,33 @@ const CANDLE = [TABLE[0] + CANDLE_AT[0], TABLE[1], TABLE[2] + CANDLE_AT[2]];
 // the festoon (wire, bulbs) moved back to the railing, turned across the view and scaled up (big globe bulbs, a long
 // sag) so its ends leave the frame at the top: x, y, z (from the table on the deck), turn, scale
 const LIGHTS_AT = [0, -1.4, -3.4, 0.45, 1.7];
-const FIRES = [[-9, -12, -3, -13], [2, -11, 8, -12.5], [-6, -19, 1, -20], [4, -22, 11, -21], [-12, -25, -5, -27]];
-// The farmer (farmer.glb): his torch head, (0.33, 0, 1.33) from his feet in the model, rests on the start of a fire
-// line (FIRES[2], lit from its right end: in view on wide and tall screens), and he walks along it. [x, z, turn]
-const FARMER = (() => {
-  const [x1, z1, x0, z0] = FIRES[2], a = Math.atan2(x1 - x0, z1 - z0), c = Math.cos(a), s = Math.sin(a);
+// The burn (FIRE in shaders.js has the same maths for the flames, char and glow). Fire lines run a to b: [ax, az, bx, bz].
+// FIRE_T per line, in burn units (burnAt: 0..1 over p 0.2-0.45, from p only): ignition start, the time the ignition
+// takes to run the line, 1 if it runs from b, and how fast the front then moves back (m per unit, away from the camera).
+// The farmer's line (FARMER) is the nearest and starts at 0 at his torch; the lines further away were lit earlier.
+const FIRES = [[-12, -17.5, -5.5, -18.8], [-2.5, -19.5, 2.8, -20.8], [-3.5, -12.9, 4.2, -13.6], [5.5, -21.5, 12, -21], [-10, -25.5, -2, -27]];
+const FIRE_T = [[-0.9, 0.55, 1, 1.6], [-0.45, 0.5, 0, 1.6], [0, 0.8, 0, 1.3], [-0.7, 0.6, 1, 1.4], [-1.2, 0.6, 0, 1.5]];
+const FARMER = 2;
+// raked straw piles out in the open field, centre-left, metres clear of the hut and of the lines: x, z, radius, height; and when each catches
+const PILES = [[2.4, -16.8, 0.95, 0.85], [-0.6, -17, 0.75, 0.7]], PILE_T = [0.05, 0.3];
+const COL_U = [0.5, 0.5, 0.25, 0.5, 0.5];             // where each line's smoke column stands (then one per pile)
+const burnAt = (q) => clamp01((q - 0.2) / 0.25);
+const fWob = (j, s) => 0.6 * Math.sin(s * 0.55 + j * 1.7) + 0.3 * Math.sin(s * 1.37 + j * 4.3) + 0.12 * Math.sin(s * 3.1 + j * 2);
+// the front on line j at u (0..1 from a) at burn B: [x, z, age]; age < 0: not lit yet
+function frontAt(j, u, B) {
+  const [ax, az, bx, bz] = FIRES[j], [t0, run, fromB, speed] = FIRE_T[j], dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz), s = u * L;
+  const age = B - t0 - run * (fromB ? 1 - u : u);
+  const off = fWob(j, s) - speed * Math.max(age, 0) * (0.45 + 0.55 * smooth(0, 1.5, Math.min(s, L - s))) * (1 + 0.3 * Math.sin(s * 0.8 + j * 2.3));
+  return [ax + dx * u - dz / L * off, az + dz * u + dx / L * off, age];
+}
+const pileAmt = (i, B) => smooth(0, 0.08, B - PILE_T[i]) * (1 - 0.45 * smooth(0.6, 1.4, B - PILE_T[i]));
+// The farmer (farmer.glb) walks slowly along his line behind the fire it runs ahead of him; his torch head,
+// (0.33, 0, 1.33) from his feet in the model, rests on the front. [x, z, turn]
+function farmerAt(B) {
+  const [x0, z0] = frontAt(FARMER, 0.04 + 0.3 * B, B), [ax, az, bx, bz] = FIRES[FARMER];
+  const a = Math.atan2(bx - ax, bz - az), c = Math.cos(a), s = Math.sin(a);
   return [x0 - (0.33 * c + 1.33 * s), z0 - (1.33 * c - 0.33 * s), a];
-})();
+}
 // The packaging forms in the air over the field, just above chest height, and lands on the café table.
 // box, bowl, cup, then fork, spoon, chopsticks (packaging.glb only; the drinking straw stands in the cup).
 // at: where it folds (world); rot: turn in the air; pose: the model's tilt in the air (Euler x, z; cutlery shows
@@ -152,7 +172,23 @@ function prepare(m) {
   }
   if (!(m.transmission > 0)) return m;
   const amber = m.name === 'glass';
-  return new THREE.MeshStandardMaterial({ name: m.name, color: amber ? 0xb05a10 : 0xfff4e6, emissive: amber ? 0xd06010 : 0xffc070, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.8, depthWrite: false });
+  const g = new THREE.MeshStandardMaterial({ name: m.name, color: amber ? 0xa04a0c : 0xfff4e6, emissive: amber ? 0xb8460a : 0xffc070, emissiveIntensity: 0, roughness: 0.15, transparent: true, opacity: 0.8, depthWrite: false });
+  if (amber) {
+    g.onBeforeCompile = ribbedGlass;
+    g.customProgramCacheKey = () => 'ribbedGlass';
+  }
+  return g;
+}
+// The candle's amber glass: vertical ribs (around the glass axis, cafe.glb space), clear between them so the wax and
+// flame show through, darker and denser at the silhouette; the flame's glow lights the ribs most at its own height.
+function ribbedGlass(sh) {
+  sh.vertexShader = 'varying vec3 vGP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvGP = position;');
+  sh.fragmentShader = 'varying vec3 vGP;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+    float rib = pow(0.5 + 0.5 * cos(atan(vGP.z - 0.13, vGP.x + 0.2) * 26.0), 1.5);
+    float fres = pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.0);
+    float band = smoothstep(0.75, 0.79, vGP.y) * smoothstep(0.84, 0.8, vGP.y);
+    totalEmissiveRadiance *= (0.35 + 1.3 * rib * (1.0 - 0.5 * fres)) * (0.5 + 0.8 * band);
+    diffuseColor.a *= 0.68 + 0.22 * rib + 0.1 * fres;`);
 }
 
 // One-time layout inside a loaded model, so a rebuild after a tier step attaches it again as it is.
@@ -250,9 +286,11 @@ function build(canvas, renderer, tier) {
 
   const U = {
     uT: { value: 0 }, uScale: { value: 1 }, uPR: { value: 1 }, uDust: { value: 0 }, uFire: { value: 0 }, uEmber: { value: 0 },
-    uClear: { value: 0 }, uHot: { value: 1 }, uFlameA: { value: 1 }, uFlameS: { value: 1 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uFibSize: { value: small ? 1 : tier.density ** -0.25 }, uSurf: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
+    uClear: { value: 0 }, uHot: { value: 1 }, uTA: { value: 1 }, uTW: { value: 0.32 }, uTH: { value: 1.4 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uFibSize: { value: small ? 1 : tier.density ** -0.25 }, uSurf: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
     uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 }, uWin: { value: small ? 2.4 : 1 }, uLift: { value: 0 }, uLiftK: { value: 0 }, uLitF: { value: small ? 0.8 : 0.45 },
-    uFA: { value: OBJ.map(() => new THREE.Vector3()) }, uFM: { value: OBJ.map(() => new THREE.Vector3()) }, uFE: { value: OBJ.map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
+    uFA: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFM: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFE: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
+    uFires: { value: FIRES.map((q) => new THREE.Vector4(...q)) }, uFireT: { value: FIRE_T.map((q) => new THREE.Vector4(...q)) }, uPiles: { value: PILES.map((q) => new THREE.Vector4(...q)) }, uPileT: { value: new THREE.Vector2(...PILE_T) }, uBurn: { value: 0 },
+    uCol: { value: [...COL_U, 0, 0].map(() => new THREE.Vector4()) },
     uSmokeLow: { value: col(0.5, 0.3, 0.2) }, uSmokeHigh: { value: col(0.5, 0.48, 0.48) }, uSmokeFire: { value: col(0, 0, 0) },
     uSmokeA: { value: 0 }, uSmokeCap: { value: SMOKE_CAP[tier.name] }, uFoot: { value: small ? 0.04 : 0.13 }, uHfPow: { value: small ? 1.5 : 1 }, uPuff: { value: small ? 1.8 : 1 }, uFibCol: { value: col(1, 0.7, 0.32) },
     uSunDirW: { value: new THREE.Vector3() }, uRim: { value: col(0, 0, 0) }, uDrop: { value: 0 },
@@ -260,7 +298,7 @@ function build(canvas, renderer, tier) {
   const bladeU = {
     uT: U.uT, uFireAmt: { value: 0 }, uPack: { value: 0 }, uSunDir: { value: new THREE.Vector3() },
     uSunCol: { value: col(1, 0.6, 0.3) }, uAmb: { value: col(0, 0, 0) }, uChar: { value: 0 }, uCool: { value: 0 }, uRows: { value: 0 }, uRimK: { value: 1 }, uSmall: { value: small ? 1 : 0 }, uHutSh: { value: new THREE.Vector4() }, uHutL: { value: new THREE.Vector2(1, 1) }, uPackPos: { value: new THREE.Vector3(...C) },
-    uFires: { value: FIRES.map((q) => new THREE.Vector4(...q)) }, uObj: { value: OBJ.map(() => new THREE.Vector4()) },
+    uFires: U.uFires, uFireT: U.uFireT, uPiles: U.uPiles, uPileT: U.uPileT, uBurn: U.uBurn, uObj: { value: [0, 1, 2].map(() => new THREE.Vector4()) },
   };
   function points(count, seed, place, vert, frag = SOFT, blending = THREE.AdditiveBlending) {
     const r = rng(seed), pos = new Float32Array(count * 3), sd = new Float32Array(count * 4);
@@ -329,19 +367,20 @@ function build(canvas, renderer, tier) {
     // own haze below: on Low three fogs after tone mapping (a dark band under the ridges)
     const gm = lambert(0xffffff, { vertexColors: true, flatShading: true, fog: false });
     gm.onBeforeCompile = (s) => {
-      Object.assign(s.uniforms, { uCityGround: U.uCityGround, uDrop: U.uDrop, uHaze: { value: scene.fog.color }, uFires: bladeU.uFires, uChar: bladeU.uChar, uFireAmt: bladeU.uFireAmt, uRows: bladeU.uRows, uT: U.uT });
+      Object.assign(s.uniforms, { uCityGround: U.uCityGround, uDrop: U.uDrop, uHaze: { value: scene.fog.color }, uFires: U.uFires, uFireT: U.uFireT, uPiles: U.uPiles, uPileT: U.uPileT, uBurn: U.uBurn, uChar: bladeU.uChar, uFireAmt: bladeU.uFireAmt, uRows: bladeU.uRows, uT: U.uT });
       s.vertexShader = 'attribute vec3 aField; uniform float uCityGround, uDrop; varying float vGH; varying vec3 vWP;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= uDrop * 12.0 * (1.0 - smoothstep(-50.0, -46.0, transformed.z));\nvWP = transformed;').replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(aField, vColor.rgb, uCityGround);')
         .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGH = mix(min(0.95, smoothstep(8.0, 46.0, -mvPosition.z) * 0.55 + smoothstep(36.0, 80.0, -mvPosition.z) * 0.4 + smoothstep(-26.0, -40.0, transformed.z) * 0.45), smoothstep(2.0, 32.0, -mvPosition.z) * 0.92, uCityGround);');
       // the bare ground past the blades fades to the same haze as the far blades
       // before tone mapping, like the ridges and blades
-      s.fragmentShader = 'varying float vGH; varying vec3 vWP; uniform vec3 uHaze; uniform vec4 uFires[5]; uniform float uChar, uFireAmt, uRows, uCityGround, uT;\n' + NOISE + s.fragmentShader.replace('#include <tonemapping_fragment>', GROUND_FX + 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');
+      s.fragmentShader = 'varying float vGH; varying vec3 vWP; uniform vec3 uHaze; uniform float uChar, uFireAmt, uRows, uCityGround, uT;\n' + NOISE + FIRE + s.fragmentShader.replace('#include <tonemapping_fragment>', GROUND_FX + 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');
     };
     mesh(g, gm);
   }
 
   // Field: thin tapered straw blades, BLADES x density, placed from rng(3); sway and light are in BLADE_V.
   {
-    const count = small ? 18000 : n(BLADES), r = rng(3), d = new THREE.Object3D();
+    // then straw heaped on the piles (lying every which way over the mound)
+    const field = small ? 18000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
     const g = new THREE.BufferGeometry();
     // thin, tapering
     g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.24, 0.55, 0, 0.24, 0.55, 0, 0, 1, 0], 3));
@@ -352,7 +391,7 @@ function build(canvas, renderer, tier) {
     });
     const im = new THREE.InstancedMesh(g, mat, count);
     d.rotation.order = 'YXZ';                         // tilt (x), then turn (y): lying straw points any way
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < field; i++) {
       // phones (portrait, narrow view) get their straw where the camera looks, and none right at the lens
       let z = (small ? 7.5 : 10) - r() * (small ? 41.5 : 44), x = (r() - 0.5) * (small ? 6 + 0.7 * (10 - z) : 52);
       const kind = r();
@@ -367,6 +406,15 @@ function build(canvas, renderer, tier) {
       d.rotation.set(tilt, r() * 6.28, (r() - 0.5) * 0.3);
       d.scale.set(wd, h, 1);
       d.updateMatrix(); im.setMatrixAt(i, d.matrix);
+    }
+    for (let i = field; i < count; i++) {
+      const [px, pz, R, H] = PILES[i < field + perPile ? 0 : 1], k = Math.sqrt(r()) * 0.95, a = r() * 6.28;
+      const x = px + Math.cos(a) * k * R, z = pz + Math.sin(a) * k * R;
+      d.position.set(x, groundH(px, pz) + H * Math.sqrt(1 - k * k) * 0.88 - 0.03, z);
+      d.rotation.set(Math.PI / 2 - 0.15 - r() * 0.7 * (1 - k), r() * 6.28, (r() - 0.5) * 0.6);
+      d.scale.set(0.02 + r() * 0.02, 0.35 + r() * 0.4, 1);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
     }
     im.frustumCulled = false;                         // blades bend in the shader
     scene.add(im);
@@ -450,37 +498,76 @@ function build(canvas, renderer, tier) {
   // Particles: dust, flames, embers, smoke
   points(small ? 450 : Math.round(1300 * tier.density ** 0.35), 4,  // dust: a full x10 reads as snow
     (r) => [(r() - 0.3) * 44, 0.15 + r() ** 2 * 1.5, 6 - r() * 36], DUST);  // low (below the ridges), thicker toward the sun
-  const onFire = (r) => { const f = FIRES[Math.floor(r() * FIRES.length)], k = r(); return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; };
-  // the fronts: one standing ribbon per fire line carries the fire; the sprite flames add licks and sparks over it
-  const fronts = (() => {
-    const pos = [], f4 = [], br = [], idx = [], M = 60;
-    FIRES.forEach(([x0, z0, x1, z1], j) => {
-      const L = Math.hypot(x1 - x0, z1 - z0), nx = -(z1 - z0) / L, nz = (x1 - x0) / L;  // n points ahead (+z, unburnt)
-      // three strips: taller and dimmer behind, short and hot in front
-      [[-0.32, 1.25, 0.45], [0, 1.0, 0.7], [0.22, 0.7, 0.85]].forEach(([off, hs, b], k) => {
-        const o = pos.length / 3, HM = 1.5 * hs;
-        for (let i = 0; i <= M; i++) {
-          const u = i / M, x = x0 + (x1 - x0) * u + nx * off, z = z0 + (z1 - z0) * u + nz * off, y = groundH(x, z) + 0.1;
-          pos.push(x, y, z, x, y + HM, z); f4.push(u * L, 0, L, j / 5 + 0.13 + k * 0.31, u * L, 1, L, j / 5 + 0.13 + k * 0.31); br.push(b, b);
-          if (i < M) idx.push(o + 2 * i, o + 2 * i + 2, o + 2 * i + 1, o + 2 * i + 1, o + 2 * i + 2, o + 2 * i + 3);
-        }
-      });
+  // fire points: [u (or angle on a pile), line 0-4 (pile 5-6), size]; the shaders put them on the fronts (FIRE)
+  const LEN = FIRES.map(([ax, az, bx, bz]) => Math.hypot(bx - ax, bz - az)), LSUM = LEN.reduce((a, b) => a + b, 0);
+  const onFire = (r) => {
+    if (r() < 0.2) return [r(), 5 + Math.floor(r() * 2), 0];
+    let k = r() * LSUM, j = 0;
+    while (k > LEN[j]) k -= LEN[j++];
+    return [k / LEN[j], j, 0];
+  };
+  // flame tongues: upright camera-facing cards, many and small on the lines, tall on the piles; phones get fewer, wider ones
+  const tongues = (() => {
+    const perM = small ? 5 : { low: 8, high: 14, ultra: 20 }[tier.name], perPile = small ? 20 : { low: 30, high: 45, ultra: 60 }[tier.name];
+    const r = rng(5), aT = [];
+    LEN.forEach((L, j) => {
+      const N = Math.round(L * perM);
+      for (let i = 0; i < N; i++) aT.push(j, (i + r()) / N, r(), r());
     });
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aF', new THREE.Float32BufferAttribute(f4, 4)); g.setAttribute('aB', new THREE.Float32BufferAttribute(br, 1)); g.setIndex(idx);
-    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: U, vertexShader: FRONT_V, fragmentShader: FRONT_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-    m.renderOrder = 1; scene.add(m); return m;
+    for (const j of [5, 6]) for (let i = 0; i < perPile; i++) aT.push(j, r(), r(), r());
+    const g = new THREE.InstancedBufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.5, 1, 0, 0.5, 1, 0], 3));
+    g.setIndex([0, 1, 2, 1, 3, 2]);
+    g.setAttribute('aT', new THREE.InstancedBufferAttribute(new Float32Array(aT), 4));
+    g.instanceCount = aT.length / 4;
+    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: U, vertexShader: TONGUE_V, fragmentShader: TONGUE_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    m.frustumCulled = false;                          // placed in the shader
+    m.renderOrder = 1;
+    scene.add(m);
+    return m;
   })();
-  const flameN = small ? 260 : Math.round(500 * tier.density ** 0.7);  // High 2,500 over the ribbons: additive sprites, fill-bound
-  U.uFlameA.value = small ? 1.1 : 0.6 / Math.sqrt(flameN / 1400); U.uFlameS.value = small ? 1.5 : 0.8;
-  const flames = points(flameN, 5, (r) => { const p = onFire(r); p[1] = groundH(p[0], p[2]); return p; }, FLAME, FLAME_F);
+  if (small) {
+    U.uTW.value = 0.55;
+    U.uTH.value = 1.45;
+  }
   const embers = points(small ? 120 : Math.round(500 * Math.sqrt(tier.density)), 6, onFire, EMBER);  // x density reads as glitter
-  flames.renderOrder = embers.renderOrder = 1;        // drawn after the smoke, so they glow through it
-  const COLS = (() => { const r = rng(13); return FIRES.map((f) => { const k = 0.5 + (r() - 0.5) * 0.3; return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; }); })();
-  // five tall plumes, one per front; fewer, bigger puffs than x density (overdraw), each thinner the more there are
+  embers.renderOrder = 1;                             // drawn after the smoke, so it glows through
+  // the raked straw piles: low lumpy mounds that char as they burn, embers glowing in the straw
+  const piles = PILES.map(([x, z, R, H]) => {
+    const g = new THREE.SphereGeometry(1, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), P = g.attributes.position;
+    for (let i = 0; i < P.count; i++) {
+      const px = P.getX(i), py = P.getY(i), pz = P.getZ(i), k = 1 + 0.08 * Math.sin(px * 3.1 + 1) * Math.sin(pz * 2.7 + 2) + 0.03 * Math.sin(px * 6.3 - pz * 4.1 + py * 5);
+      P.setXYZ(i, px * k, py * k, pz * k);
+    }
+    g.computeVertexNormals();
+    const u = { uPChar: { value: 0 }, uPGlow: { value: 0 }, uT: U.uT };
+    const mat = lambert(0x4a3a26);
+    mat.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, u);
+      sh.vertexShader = 'varying vec3 vPP;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvPP = position;');
+      sh.fragmentShader = 'varying vec3 vPP; uniform float uPChar, uPGlow, uT;\n' + NOISE + sh.fragmentShader
+        .replace('#include <color_fragment>', `#include <color_fragment>
+          float st = n2(vPP.xz * 40.0 + vPP.y * 23.0) * 0.6 + n2(vPP.xz * 9.0) * 0.4;  // under the heaped straw (the field's blades)
+          diffuseColor.rgb *= 0.45 + 0.7 * st;
+          float ch = smoothstep(0.35, 0.75, n2(vPP.xz * 3.0 + vPP.y * 2.0) * 0.6 + 0.4 * (1.0 - vPP.y) + uPChar - 0.6);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.03, 0.025, 0.02), ch * min(uPChar * 2.0, 1.0));`)
+        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vec3(1.0, 0.32, 0.06) * uPGlow * pow(n2(vPP.xz * 18.0 + vPP.y * 14.0 + uT * 0.4), 4.0) * 2.0;');
+    };
+    mat.customProgramCacheKey = () => 'pile';
+    const m = mesh(g, mat, x, groundH(x, z) - 0.04, z);
+    m.scale.set(R, H, R);
+    m.userData.u = u;
+    return m;
+  });
+  // one smoke column per fire line, standing on its front, and one per pile; fewer, bigger puffs than x density
+  // (overdraw), each thinner the more there are; the piles' plumes are the thickest
   const smokeN = small ? 360 : tier.name === 'ultra' ? 640 : 420;  // fill-bound (big blended sprites into a 4x MSAA target): High is held at 420
   U.uSmokeA.value = small ? 0.95 : 0.75 * Math.min(1, Math.sqrt(360 / smokeN));  // phones: fewer, clearer columns
-  // the foot sits on the fire line
-  const smoke = points(smokeN, 7, (r) => { const c = COLS[Math.floor(r() * COLS.length)]; return [c[0] + (r() - 0.5) * 1.6, 0, c[2] + (r() - 0.5) * 0.4]; }, SMOKE, SMOKE_F, THREE.NormalBlending);
+  // the foot sits on the front (uCol); y carries the column
+  const smoke = points(smokeN, 7, (r) => {
+    const k = r() * 8.4, c = k < 5 ? Math.floor(k) : 5 + Math.floor((k - 5) / 1.7);
+    return [(r() - 0.5) * (c < 5 ? 1.6 : 0.9), c, (r() - 0.5) * 0.4];
+  }, SMOKE, SMOKE_F, THREE.NormalBlending);
 
   // Straw fibres: scattered on the field (rng(1)), swirl up, fold into the box, bowl and cup
   const fibreN = small ? 1500 : Math.round(3000 * tier.density ** 0.25);  // High 5,300; Ultra 7,000: few enough that single straws read
@@ -619,10 +706,12 @@ function build(canvas, renderer, tier) {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xffffff, 1); scene.add(sun);
   const fill = new THREE.DirectionalLight(0x8090c0, 0.25); fill.position.set(0, 10, 30); scene.add(fill);
-  // the fires light the hut and the stubble around them
+  // the burning piles light the stubble (and the farmer) around them; a second light rides the farmer's line
   const fireLight = new THREE.PointLight(0xff6a20, 0, 18, 1.5);
-  fireLight.position.set(4, 1.5, -15);
+  fireLight.position.set(0.9, 3.6, -17.2);
   scene.add(fireLight);
+  const lineLight = new THREE.PointLight(0xff6a20, 0, 10, 1.6);
+  scene.add(lineLight);
   // warm key from the sun side; the cool fill comes from the sky
   const packLight = new THREE.PointLight(0xffb070, 0, 9, 1);
   packLight.position.set(C[0] + 1.6, 2.2, C[2] + 2.2);
@@ -632,7 +721,9 @@ function build(canvas, renderer, tier) {
   cafeLight.position.set(0, 2.8, TABLE[2]);
   scene.add(cafeLight);
   // the candle's own small warm pool, from just above the glass (closer, it blows out the wax)
-  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4); candle.position.set(CANDLE[0], CANDLE[1] + 0.2, CANDLE[2] + 0.05); scene.add(candle);
+  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4);
+  candle.position.set(CANDLE[0], CANDLE[1] + 0.2, CANDLE[2] + 0.05);
+  scene.add(candle);
   // the table only, not the floor by the lens
   const tableSpot = new THREE.SpotLight(0xffd2a4, 0, 7, 0.42, 1, 1);
   tableSpot.position.set(0.3, 2.8, TABLE[2] + 0.2);
@@ -649,9 +740,7 @@ function build(canvas, renderer, tier) {
 
   // ---- Blender models (models/*.glb, see prepare()): each replaces its v1 shapes once loaded; until then, or if
   // it fails, v1 stays. They take the film's lights; their textures carry AO (on uv1) and detail only.
-  const farmer = new THREE.Group();
-  farmer.position.set(FARMER[0], groundH(FARMER[0], FARMER[1]), FARMER[1]);
-  farmer.rotation.y = FARMER[2];
+  const farmer = new THREE.Group();                   // placed each frame (farmerAt)
   scene.add(farmer);
   // emissive parts the film drives each frame: [material, kind, base]
   const emit = [];
@@ -684,7 +773,7 @@ function build(canvas, renderer, tier) {
         if (m.userData.base) emit.push([m, 'flame', m.userData.base]);
         else fade(cafeMats, m);
         if (m.name.startsWith('bulb')) emit.push([m, 'bulb', m.name === 'bulb' ? 4 : 1.6]);
-        if (m.name === 'glass' || m.name === 'wax') emit.push([m, 'candle', m.name === 'glass' ? 0.8 : 0.5]);
+        if (m.name === 'glass' || m.name === 'wax') emit.push([m, 'candle', m.name === 'glass' ? 1.1 : 0.5]);
         if (tier.name === 'low' && m.clearcoat) m.clearcoat = 0;
       });
       // the glow sprites onto the model's flame and bulbs
@@ -805,7 +894,23 @@ function build(canvas, renderer, tier) {
     // no front light into the low sun; none on the cafe floor
     fill.color.lerpColors(MOON, WARM_FILL, sunW);
     fill.intensity = (0.04 * sunW + 0.7 * (1 - sunW)) * (1 - 0.8 * P.city);
-    fireLight.intensity = 9 * P.fire;
+    const B = burnAt(q), fireOn = P.fire > 0.001;
+    U.uBurn.value = B;
+    fireLight.intensity = 7 * P.fire * Math.max(pileAmt(0, B), pileAmt(1, B));
+    const lf = frontAt(FARMER, 0.4, B);
+    lineLight.position.set(lf[0], 0.9, lf[1]);
+    lineLight.intensity = 6 * P.fire * smooth(0, 0.05, lf[2]);
+    // smoke columns stand on the fronts and piles, each rising once its fire burns
+    COL_U.forEach((u, j) => {
+      const [x, z, age] = frontAt(j, u, B);
+      U.uCol.value[j].set(x, groundH(x, z), z, smooth(0, 0.08, age));
+    });
+    PILES.forEach(([x, z], i) => {
+      U.uCol.value[5 + i].set(x, groundH(x, z), z, pileAmt(i, B));
+      const pu = piles[i].userData.u, a = B - PILE_T[i];
+      pu.uPChar.value = smooth(0, 0.6, a);
+      pu.uPGlow.value = smooth(0, 0.1, a) * (0.3 + P.fire) * (1 - 0.6 * smooth(1, 2, a));
+    });
     cafeLight.intensity = 5 * P.city;
     tableSpot.intensity = 0.3 * P.city;
     candle.intensity = 0.08 * P.city * flick;
@@ -815,7 +920,7 @@ function build(canvas, renderer, tier) {
     bladeU.uAmb.value.copy(horizon).lerp(zenith, 0.35).lerp(MOON, 0.2 * (1 - sunW)).multiplyScalar(hemi.intensity * (1 + 0.5 * cool) / Math.PI).add(tc.copy(fill.color).multiplyScalar(fill.intensity * 0.3 / Math.PI));
     bladeU.uFireAmt.value = 0.9 * P.fire;
     U.uCityGround.value = smooth(0.6, 0.8, q);
-    bladeU.uChar.value = smooth(0.24, 0.34, q) * (1 - smooth(0.5, 0.6, q));
+    bladeU.uChar.value = smooth(0.19, 0.22, q) * (1 - smooth(0.5, 0.6, q));  // the char itself spreads with the fronts (FIRE)
     bladeU.uCool.value = cool;
     bladeU.uRows.value = 0.6 * sunW + 0.25 * glow;
     bladeU.uRimK.value = (post ? 1.7 : 1) * (small ? 0.5 : 1);
@@ -856,8 +961,8 @@ function build(canvas, renderer, tier) {
     U.uBulbs.value = P.city;
     U.uCity.value = P.city;
     U.uStars.value = Math.max(0.35 * smooth(0.45, 0.65, q) * P.clear, P.city);  // first stars at dusk, all of them as the city rises
-    flames.visible = embers.visible = P.fire > 0.001 || P.smoke > 0.001;
-    fronts.visible = P.fire > 0.001;
+    embers.visible = fireOn || P.smoke > 0.001;
+    tongues.visible = fireOn;
     smoke.visible = U.uS.value > 0.001;
     fibres.visible = U.uFibA.value > 0.001 && U.uFibOut.value < 1;
 
@@ -898,9 +1003,12 @@ function build(canvas, renderer, tier) {
     city.position.y = -12 - ((1 - P.city) ** 2) * 16;
     cafe.visible = P.city > 0.001;
     cafeMats.forEach((m) => { m.opacity = P.city * (m.userData.op ?? 1); });
-    // the farmer lights the field; flames flicker on t alone
-    farmer.visible = P.fire > 0.001;
-    const torch = Math.min(1, 4 * P.fire) * (0.8 + 0.2 * Math.sin(t * 13.1 + 0.4) * Math.sin(t * 5.3));
+    // the farmer lights the field, walking along his line (p); his torch is lit as he arrives and flickers on t
+    farmer.visible = q > 0.16 && q < 0.5;
+    const fa = farmerAt(B);
+    farmer.position.set(fa[0], groundH(fa[0], fa[1]), fa[1]);
+    farmer.rotation.y = fa[2];
+    const torch = smooth(0.16, 0.19, q) * (1 - smooth(0.45, 0.5, q)) * (0.8 + 0.2 * Math.sin(t * 13.1 + 0.4) * Math.sin(t * 5.3));
     for (const [m, kind, k] of emit) {
       if (kind === 'bulb') m.emissiveIntensity = k * P.city;
       else if (kind === 'candle') m.emissiveIntensity = k * P.city * flick;
@@ -972,7 +1080,12 @@ async function boot() {
   });
   const postReady = (VIDEO || BENCH) ? loadPost() : new Promise((r) => requestAnimationFrame(() => r(loadPost())));
   // The models load after the first frame on every tier (small); any failure keeps v1's shapes. Fixed renders wait.
-  const attachModels = () => loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e));
+  // A hung request (CDN or Draco that never answers) leaves video mode waiting with no filmReady; after 20 s the page
+  // says so for the capture harness.
+  const attachModels = () => {
+    const stall = setTimeout(() => { root.dataset.filmModels = 'stalled'; }, 20000);
+    return loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e)).finally(() => clearTimeout(stall));
+  };
   const modelsReady = (VIDEO || BENCH) ? attachModels() : new Promise((r) => requestAnimationFrame(() => r(attachModels())));
 
   const doors = document.getElementById('doors');

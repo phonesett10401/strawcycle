@@ -26,32 +26,6 @@ void main() {
   vC = mix(vec3(0.9, 0.5, 0.22), vec3(1.0, 0.68, 0.36), back);  // only where it catches the sun
 }`;
 
-// Flames: tongues along each fire line. Height per spot and per particle flicker are layered sines of t, so a
-// fixed (p, t) gives the same fire. uHot lifts the colour above the bloom threshold when post is on.
-export const FLAME = /* glsl */`
-uniform float uFire, uFlameA, uFlameS, uHot; varying float vA; varying vec3 vC;
-void main() {
-  float life = fract(aSeed.w + uT * (0.9 + aSeed.x * 0.8));
-  vec3 p = position;
-  float tongue = 0.5 + 0.5 * sin(p.x * 4.3 + p.z * 3.1 + uT * 2.3) * sin(p.x * 1.7 - p.z * 1.3 - uT * 3.9);
-  p.z += (fract(aSeed.z * 7.7) - 0.5) * 0.7; p.x += (fract(aSeed.w * 3.3) - 0.5) * 0.3;  // a band of fire, not a line
-  p.y += 0.08 + life * (0.55 + 0.9 * tongue) * (0.5 + 0.5 * aSeed.y) * uFire;  // tongues 0.3-1.4 m, taller where the front flares
-  p.x += sin(uT * 4.0 + aSeed.z * 20.0 + life * 5.0) * 0.1 * life + life * life * 0.35;  // licks, leaning with the wind
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_Position = projectionMatrix * mv;
-  gl_PointSize = psize((0.6 - 0.32 * life) * (0.5 + 0.5 * uFire) * uFlameS, mv);
-  float flick = 0.72 + 0.16 * sin(uT * 13.0 + aSeed.x * 50.0) + 0.12 * sin(uT * 29.0 + aSeed.y * 70.0);
-  vA = uFire * uFlameA * (1.0 - life) * smoothstep(0.0, 0.3, life) * flick * (0.35 + 0.85 * tongue);  // brightest up in the tongue, so fronts read as flames, not a glowing seam
-  vC = mix(mix(vec3(1.0, 0.52, 0.2), vec3(1.0, 0.3, 0.05), smoothstep(0.0, 0.16, life)), vec3(0.45, 0.06, 0.01), smoothstep(0.3, 0.8, life)) * uHot * 0.6;  // orange-red; only the densest core clips
-}`;
-
-export const FLAME_F = /* glsl */`
-varying float vA; varying vec3 vC;
-void main() {  // a tongue: wide at the base, narrowing to the tip (point y runs down)
-  vec2 c = gl_PointCoord - 0.5; c.x *= 1.8 + 2.0 * (0.5 - c.y);
-  float d = length(c) * 2.0; gl_FragColor = vec4(vC, vA * pow(max(1.0 - d, 0.0), 1.2));
-}`;
-
 // sin-free value noise (cheap per fragment, same result for the same input)
 export const NOISE = /* glsl */`
 float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -59,38 +33,101 @@ float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + 1.0), f.x), f.y); }
 `;
 
-// Fire fronts: one standing ribbon per fire line (aF: metres along, height 0..1, length, seed). Tongues of different
-// heights drift along it and lick upward with t; a hot low core, dark red tips, edges that stay edges under bloom.
-export const FRONT_V = /* glsl */`
-attribute vec4 aF; attribute float aB; varying vec4 vF; varying float vB;
-void main() { vF = aF; vB = aB; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+// The burning, shared by the flames, embers, blades and ground. Each fire line runs a to b (uFires); uFireT is
+// (ignition start, run time, 1 = lit from b, front speed) in burn units (uBurn: 0..1 over the burn beat, from p only).
+// The ignition line wobbles; once lit, a spot's front moves back (away from the camera, -n) with its age, curving as
+// it goes, and leaves char behind. Piles (uPiles: x, z, radius, height) catch at uPileT.
+export const FIRE = /* glsl */`
+uniform vec4 uFires[5], uFireT[5], uPiles[2]; uniform vec2 uPileT; uniform float uBurn;
+float gH(vec2 p) { return (0.1 * sin(p.x * 0.9) * cos(p.y * 0.7) + 0.05 * sin(p.x * 2.3 + p.y * 1.7)) * smoothstep(-36.0, -31.0, p.y); }
+float fWob(float j, float s) { return 0.6 * sin(s * 0.55 + j * 1.7) + 0.3 * sin(s * 1.37 + j * 4.3) + 0.12 * sin(s * 3.1 + j * 2.0); }
+float fAge(int j, float u) {
+  vec4 T = uFireT[j];
+  return uBurn - T.x - T.y * mix(u, 1.0 - u, T.z);
+}
+float fOff(int j, float s, float L, float age) {
+  float endk = smoothstep(0.0, 1.5, min(s, L - s));
+  return fWob(float(j), s) - uFireT[j].w * max(age, 0.0) * (0.45 + 0.55 * endk) * (1.0 + 0.3 * sin(s * 0.8 + float(j) * 2.3));
+}
+vec2 fPoint(int j, float u, out float age, out float amt) {
+  vec2 a = uFires[j].xy, ab = uFires[j].zw - a; float L = length(ab), s = u * L;
+  age = fAge(j, u);
+  amt = smoothstep(0.0, 0.03, age) * (0.35 + 0.65 * smoothstep(0.0, 1.2, min(s, L - s)));
+  return a + ab * u + vec2(-ab.y, ab.x) / L * fOff(j, s, L, age);
+}
+float pAmt(int i) {
+  float a = uBurn - uPileT[i];
+  return smoothstep(0.0, 0.08, a) * (1.0 - 0.45 * smoothstep(0.6, 1.4, a));
+}
+`;
 
-export const FRONT_F = /* glsl */`
-uniform float uT, uFire, uHot; varying vec4 vF; varying float vB;
-${NOISE}
+// Flame tongues: camera-facing cards (upright) standing on the fronts and piles. aT: line 0-4 or pile 5-6, u along
+// the line (or angle on the pile), size, seed. Height flickers on t; each card's shape is drawn in TONGUE_F.
+export const TONGUE_V = /* glsl */`
+uniform float uT, uFire, uTW, uTH; attribute vec4 aT; varying vec2 vUv; varying float vS, vA, vK;
+${FIRE}
 void main() {
-  float x = vF.x, y = vF.y, s = vF.w * 17.0;
-  // a turbulent flame field rising with t: tall where the front flares, breaking into licks and wisps toward the top
-  float H = (0.18 + 0.6 * n2(vec2(x * 1.1 + s, uT * 0.5))) * (0.7 + 0.3 * n2(vec2(x * 2.8 - s, uT * 1.6)));
-  H *= uFire * smoothstep(-0.2, 0.9, x) * smoothstep(-0.2, 0.9, vF.z - x);  // the ends die down
-  float v = y / max(H, 0.03);
-  float nz = n2(vec2(x * 6.5, y * 4.5 - uT * 3.2)) * 0.6 + n2(vec2(x * 14.0 + s, y * 9.0 - uT * 5.2)) * 0.4;  // many small tongues
-  float dens = (1.0 - v) * 1.35 + (nz - 0.5) * 1.6;  // > 0 inside the fire
-  float bot = 0.03 + 0.05 * n2(vec2(x * 3.0, uT));
-  float a = smoothstep(0.0, 0.3, dens) * smoothstep(bot, bot + 0.06, y);
-  if (a < 0.004) discard;
-  vec3 c = mix(vec3(1.0, 0.88, 0.58), vec3(1.0, 0.45, 0.08), smoothstep(0.05, 0.3, v) * (1.0 - smoothstep(1.1, 1.8, dens)));  // white-yellow at the hot base
-  c = mix(c, vec3(0.42, 0.05, 0.01), smoothstep(0.6, 1.05, v));  // dark red tips
-  a *= 1.0 - 0.4 * smoothstep(0.6, 1.0, v);
-  gl_FragColor = vec4(c * uHot * 0.6 * vB, a * min(uFire * 2.0, 1.0));
+  int j = int(aT.x + 0.5); float age = 0.0, amt, H, W; vec3 b;
+  vK = step(4.5, aT.x);
+  if (j < 5) {
+    vec2 xz = fPoint(j, aT.y, age, amt);
+    b = vec3(xz.x, gH(xz) - 0.05, xz.y);
+    H = uTH * (0.3 + 0.7 * aT.z * aT.z) * (1.0 - 0.3 * smoothstep(0.3, 1.2, age));  // many small tongues, a few tall
+    W = uTW * (0.7 + 0.6 * aT.w);
+  } else {
+    int i = j - 5; vec4 P = uPiles[i]; float r = sqrt(fract(aT.w * 7.31)) * 0.8, an = aT.y * 6.2832;
+    amt = pAmt(i);
+    b = vec3(P.x + cos(an) * r * P.z, gH(P.xy) + P.w * sqrt(max(1.0 - r * r, 0.0)) * 0.85, P.y + sin(an) * r * P.z);
+    H = uTH * (0.7 + 1.0 * aT.z * aT.z) * (1.2 - 0.5 * r);  // taller over the pile's crown
+    W = uTW * (1.0 + 0.8 * aT.w);
+  }
+  float fl = 0.72 + 0.28 * sin(uT * (6.0 + 6.0 * aT.w) + aT.z * 40.0) * sin(uT * (2.3 + 3.0 * aT.z) + aT.w * 25.0);
+  H *= fl * (0.35 + 0.65 * uFire);
+  vec3 tc = cameraPosition - b, rt = normalize(vec3(tc.z, 0.0, -tc.x));
+  vec3 p = b + rt * position.x * W + vec3(0.0, position.y * H, 0.0);
+  p.x += position.y * position.y * H * 0.3;  // leaning with the wind
+  vUv = vec2(position.x + 0.5, position.y);
+  vS = aT.w * 17.0 + aT.z * 5.0;
+  vA = amt * min(uFire * 2.0, 1.0) * step(0.001, H);
+  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
 }`;
 
-// Embers: sparks that leave the fire lines, rise and drift downwind on t; as the air clears they sink back.
+export const TONGUE_F = /* glsl */`
+uniform float uT, uHot, uTA; varying vec2 vUv; varying float vS, vA, vK;
+${NOISE}
+void main() {
+  float y = vUv.y, x = vUv.x - 0.5;
+  x += (n2(vec2(y * 2.5 - uT * 3.5, vS)) - 0.5) * 0.5 * y;  // the tongue wavers, most at the tip
+  float wd = 0.46 * pow(1.0 - y, 0.75) * smoothstep(-0.05, 0.2, y);
+  float n = n2(vec2(vUv.x * 4.0 + vS, y * 3.0 - uT * 4.5));
+  float d = 1.0 - abs(x) / max(wd, 0.001) + (n - 0.5) * 0.8 * y;
+  float a = smoothstep(0.0, 0.5, d) * smoothstep(0.0, 0.08, y) * vA * uTA * (1.0 - 0.55 * vK);  // the pile's tongues overlap many deep
+  if (a < 0.004) discard;
+  float heat = clamp((1.0 - y) * (0.5 + 0.5 * d) * (1.0 - 0.25 * vK), 0.0, 1.0);
+  vec3 c = mix(vec3(0.32, 0.03, 0.01), vec3(1.0, 0.36, 0.05), smoothstep(0.08, 0.45, heat));  // dark red tips, orange body
+  c = mix(c, vec3(1.0, 0.82, 0.5), smoothstep(0.55, 0.85, heat));  // white-yellow base
+  c *= mix(0.55, 0.55 * uHot + 0.2, smoothstep(0.72, 0.95, heat));  // only the hot core goes past the bloom threshold
+  gl_FragColor = vec4(c, a * (1.0 - 0.45 * smoothstep(0.55, 1.0, y)));
+}`;
+
+// Embers: sparks that leave the fronts and the piles (position: u or angle, line 0-4 or pile 5-6), rise and drift
+// downwind on t; as the air clears they sink back.
 export const EMBER = /* glsl */`
 uniform float uEmber, uClear, uHot; varying float vA; varying vec3 vC;
+${FIRE}
 void main() {
-  float life = fract(aSeed.w + uT * (0.05 + aSeed.x * 0.07));
-  vec3 p = position;
+  float life = fract(aSeed.w + uT * (0.05 + aSeed.x * 0.07)), amt, age;
+  int j = int(position.y + 0.5);
+  vec3 p;
+  if (j < 5) {
+    vec2 xz = fPoint(j, position.x, age, amt);
+    p = vec3(xz.x, gH(xz), xz.y);
+  } else {
+    vec4 P = uPiles[j - 5];
+    float an = position.x * 6.2832;
+    amt = pAmt(j - 5) * 1.5;
+    p = vec3(P.x + cos(an) * P.z * 0.5, gH(P.xy) + P.w * 0.8, P.y + sin(an) * P.z * 0.5);
+  }
   p.y += 0.2 + life * (1.0 + aSeed.y * aSeed.y * 5.0) * (1.0 - 0.85 * uClear);
   p.x += life * (0.8 + aSeed.z * 1.6) + sin(uT * (0.6 + aSeed.x) + aSeed.z * 6.28) * (0.1 + 0.6 * life);
   p.z += cos(uT * 0.5 + aSeed.y * 6.28) * life * 0.8;
@@ -98,33 +135,43 @@ void main() {
   gl_Position = projectionMatrix * mv;
   gl_PointSize = max(psize(0.04 + aSeed.y * 0.05, mv), 1.2);
   float flick = 0.55 + 0.45 * sin(uT * (5.0 + aSeed.x * 7.0) + aSeed.z * 40.0);
-  vA = uEmber * smoothstep(0.0, 0.05, life) * (1.0 - life) * (1.0 - life) * flick * (0.3 + 0.9 * pow(fract(aSeed.x * 13.7), 2.0));  // a few bright sparks
+  vA = uEmber * min(amt, 1.0) * smoothstep(0.0, 0.05, life) * (1.0 - life) * (1.0 - life) * flick * (0.3 + 0.9 * pow(fract(aSeed.x * 13.7), 2.0));  // a few bright sparks
   vC = mix(vec3(1.0, 0.5, 0.14), vec3(0.9, 0.2, 0.03), life) * uHot * 1.1;
 }`;
 
 // Straw blades (InstancedMesh, local blade 0..1 tall): wind bend from a rolling gust and a per-blade flutter, both
 // pure in t and position. Lit by the sun (backlit tips glow), the fire lines, the packaging glow; haze far away.
 export const BLADE_V = /* glsl */`
-uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uSmall; uniform vec3 uSunDir, uSunCol, uAmb, uPackPos; uniform vec4 uFires[5], uObj[3], uHutSh; uniform vec2 uHutL;
+uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uSmall; uniform vec3 uSunDir, uSunCol, uAmb, uPackPos; uniform vec4 uObj[3], uHutSh; uniform vec2 uHutL;
 varying vec3 vCol; varying float vHaze;
+${FIRE}
 #include <fog_pars_vertex>
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
   mat4 m = modelMatrix * instanceMatrix;
   vec3 base = m[3].xyz, w = (m * vec4(position, 1.0)).xyz;
   float h = position.y, H = length(m[1].xyz), s = hash(base.xz), s2 = hash(base.zx + 7.0), s3 = hash(base.xz * 1.7 + 3.1);
-  // fire first: behind each front the straw is burnt down to black stubs; just ahead of it the stubble glows
-  float fg = 0.0, burnt = 0.0;
-  for (int i = 0; i < 5; i++) {
-    vec2 a = uFires[i].xy, b = uFires[i].zw, ab = b - a;
-    float along = dot(base.xz - a, ab);
-    vec2 d = base.xz - (a + ab * clamp(along / dot(ab, ab), 0.0, 1.0));
-    float sd = dot(base.xz - a, normalize(vec2(-ab.y, ab.x)));  // the fronts run toward +z (the camera); behind them is burnt
-    fg += mix(0.3, 1.0, step(0.0, sd)) / (1.0 + dot(d, d) * 0.9);
-    burnt = max(burnt, step(0.0, along) * step(along, dot(ab, ab)) * smoothstep(-5.4, -4.4, sd + s * 0.6) * smoothstep(0.1, -0.5, sd));
+  // fire first: between each ignition line and its front the straw is burnt down to black stubs; near the front and
+  // around a burning pile the stubble is lit; none grows through a pile
+  float fg = 0.0, burnt = 0.0, inPile = 0.0;
+  if (uFireAmt + uChar > 0.001) {
+    for (int i = 0; i < 5; i++) {
+      vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
+      float L = length(ab), k = dot(base.xz - a, ab) / (L * L), sl = k * L, sd = dot(base.xz - a, vec2(-ab.y, ab.x) / L) + (s - 0.5) * 0.3;
+      float age = fAge(i, clamp(k, 0.0, 1.0)), off = fOff(i, sl, L, age), w0 = fWob(float(i), sl), de = max(abs(k - 0.5) - 0.5, 0.0) * L;
+      burnt = max(burnt, step(0.0, age) * step(0.0, k) * step(k, 1.0) * smoothstep(off - 0.15, off + 0.15, sd) * smoothstep(w0 + 0.5, w0 + 0.2, sd));
+      fg += smoothstep(0.0, 0.03, age) / (1.0 + ((sd - off) * (sd - off) + de * de) * 0.9);
+    }
+    for (int i = 0; i < 2; i++) {
+      vec2 d = base.xz - uPiles[i].xy;
+      float r2 = dot(d, d), R = uPiles[i].z;
+      fg += pAmt(i) * 2.5 / (1.0 + r2 * 0.25);
+      inPile = max(inPile, step(r2, R * R * 0.8) * step(base.y, 0.12));
+      burnt = max(burnt, smoothstep(0.0, 0.5, uBurn - uPileT[i]) * step(r2, (R + 0.5) * (R + 0.5)));
+    }
   }
   float dist = length(cameraPosition - base);
-  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
+  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt * step(base.y, 0.12)) * (1.0 - inPile) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
   float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
   float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
   w.x += h * h * H * sway; w.z -= h * h * H * sway * 0.3; w.y -= h * h * H * sway * sway * 0.5;
@@ -169,11 +216,12 @@ void main() {
 // outline is value noise in the fragment shader, turning slowly with t; the lower part of each column and the
 // underside of each puff take the fire colour. The column base is clear so the flames show beneath it.
 export const SMOKE = /* glsl */`
-uniform float uS, uSmokeA, uSmokeCap, uClear, uFoot, uHfPow, uPuff; uniform vec3 uSmokeLow, uSmokeHigh, uSmokeFire; varying float vA, vRot; varying vec3 vC, vF;
+uniform float uS, uSmokeA, uSmokeCap, uClear, uFoot, uHfPow, uPuff; uniform vec3 uSmokeLow, uSmokeHigh, uSmokeFire; uniform vec4 uCol[7]; varying float vA, vRot; varying vec3 vC, vF;
 void main() {
   float hf = pow(aSeed.w, uHfPow), h = hf * uS;  // height follows the smoke amount, so the fall is the rise run backwards (phones: more puffs low, so each column stands on its fire)
   float top = smoothstep(0.55, 1.0, hf) * uS;  // up high the plume flattens and spreads into a ceiling
-  vec3 p = position;
+  vec4 col = uCol[int(position.y + 0.5)];  // each column stands on its front or pile (y carries its index) and rises once that burns
+  vec3 p = vec3(position.x, 0.0, position.z) + col.xyz;
   float y = h * 26.0;
   p.y += 0.15 + y - max(y - 15.0, 0.0) * 0.65 + sin(uT * 0.35 + aSeed.z * 6.28) * 0.4 * uS;
   float wide = 0.25 + hf * 0.9 + h * h * 4.5 + top * 13.0 + uClear * (1.0 + hf * 5.0);  // a narrow foot on the fire line, billowing as it climbs
@@ -187,8 +235,8 @@ void main() {
   // thin right at the fire line, densest a little above it, thinning as it climbs, faded right at the lens
   vA = uS * (1.0 - 0.55 * uClear) * uSmokeA * smoothstep(-0.02, uFoot, hf) * (1.0 - 0.6 * hf) * smoothstep(2.0, 7.0, -mv.z);
   vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.05, 0.5, hf));
-  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.5, hf));
-  vA *= 0.45 + 0.9 * fract(aSeed.w * 7.7 + aSeed.x * 3.1);  // some puffs dense, some thin
+  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.5, hf)) * col.w;
+  vA *= (0.45 + 0.9 * fract(aSeed.w * 7.7 + aSeed.x * 3.1)) * col.w;  // some puffs dense, some thin
   vRot = aSeed.z * 6.28 + uT * (0.04 + 0.06 * aSeed.x) * (aSeed.y > 0.5 ? 1.0 : -1.0);
 }`;
 
@@ -421,24 +469,34 @@ void main() {
 }`;
 
 // Field ground under the blades: furrows between the harvest rows (long shadows toward the low sun), a black
-// smouldering strip behind each fire front and a warm glow on the stubble just ahead of it.
+// charred band between each ignition line and its front with faint embers in it, a hot rim on the front and warm
+// light on the stubble around it; the same around the burning piles.
 export const GROUND_FX = /* glsl */`
   if (uCityGround < 0.99) {
     float rw = abs(fract(vWP.x / 0.3) - 0.5) * 2.0, fade = 1.0 - smoothstep(0.15, 0.5, fwidth(vWP.x / 0.3));
     gl_FragColor.rgb *= 1.0 - uRows * (1.0 - rw) * fade * (1.0 - uCityGround);
-    float burnt = 0.0, ahead = 0.0, smoulder = 0.0, rim = 0.0;
-    if (uChar + uFireAmt > 0.001) for (int i = 0; i < 5; i++) {  // only while the fields burn
-      vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
-      float L = length(ab), k = dot(vWP.xz - a, ab) / (L * L), e = min(k, 1.0 - k) * L;
-      float sd = dot(vWP.xz - a, vec2(-ab.y, ab.x) / L) + (n2(vWP.xz * 0.9) - 0.5) * 1.2;
-      float sd0 = dot(vWP.xz - a, vec2(-ab.y, ab.x) / L) + (n2(vWP.xz * 4.0) - 0.5) * 0.16, inside = smoothstep(-0.6, 0.4, e);
-      float b = smoothstep(-0.9, 0.3, e) * smoothstep(-5.6, -4.2, sd) * smoothstep(0.15, -0.35, sd0);
-      burnt = max(burnt, b); smoulder = max(smoulder, b * smoothstep(-1.6, -0.3, sd0) * n2(vWP.xz * 3.0 + uT * 0.3));
-      rim = max(rim, inside * exp(-abs(sd0 + 0.05) * 10.0));
-      ahead += inside * smoothstep(-0.3, 0.0, sd0) * exp(-max(sd0, 0.0) * 0.8);
+    float burnt = 0.0, smoulder = 0.0, rim = 0.0, glow = 0.0;
+    if (uChar + uFireAmt > 0.001) {  // only while the fields burn
+      float j1 = (n2(vWP.xz * 3.5) - 0.5) * 0.3 + (n2(vWP.xz * 0.8) - 0.5) * 0.4;
+      for (int i = 0; i < 5; i++) {
+        vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
+        float L = length(ab), k = dot(vWP.xz - a, ab) / (L * L), sl = k * L, sd = dot(vWP.xz - a, vec2(-ab.y, ab.x) / L) + j1;
+        float age = fAge(i, clamp(k, 0.0, 1.0)), lit = smoothstep(0.0, 0.02, age), ends = smoothstep(-0.3, 0.4, min(sl, L - sl) + j1 * 2.0);
+        float off = fOff(i, sl, L, age), w0 = fWob(float(i), sl), df = sd - off;
+        float b = lit * ends * smoothstep(-0.12, 0.12, df) * smoothstep(w0 + 0.55, w0 + 0.2, sd);
+        burnt = max(burnt, b);
+        smoulder = max(smoulder, b * smoothstep(1.8, 0.1, df) * pow(smoothstep(0.6, 0.95, n2(vWP.xz * 11.0 + uT * 0.15)), 2.0));  // sparse embers
+        rim = max(rim, lit * ends * exp(-abs(df) * 14.0));
+        glow += lit * ends * exp(-abs(df) * 0.9);
+      }
+      for (int i = 0; i < 2; i++) {
+        float d = length(vWP.xz - uPiles[i].xy) + j1 * 2.0, R = uPiles[i].z, am = pAmt(i);
+        burnt = max(burnt, step(0.0, uBurn - uPileT[i]) * smoothstep(R + 0.9, R + 0.4, d));
+        glow += am * exp(-max(d - R, 0.0) * 0.6);
+      }
     }
-    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.018, 0.016, 0.015) + vec3(0.8, 0.15, 0.02) * uFireAmt * smoulder, uChar * burnt * 0.96);
-    gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * uFireAmt * min(ahead, 1.2) * 0.9 + vec3(1.0, 0.6, 0.2) * uFireAmt * rim * 2.2;  // lit stubble ahead; a hot rim on the line
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.018, 0.016, 0.015) + vec3(0.9, 0.2, 0.03) * smoulder * (0.2 + 0.8 * uFireAmt), uChar * burnt * 0.96);
+    gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * uFireAmt * min(glow, 1.5) * 0.22 * (1.0 - 0.8 * burnt) + vec3(1.0, 0.55, 0.18) * uFireAmt * rim * 0.9;  // lit stubble; a hot rim on the front
   }
 `;
 
