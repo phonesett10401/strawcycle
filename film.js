@@ -2,6 +2,7 @@
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
 // Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
 import { params, rng, counter, shouldUse3D, tooSlow } from './timeline.js';
+import { TIERS, pickTier, nextStep, parseFilmFlags } from './tiers.js';
 
 const root = document.documentElement;
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -10,7 +11,12 @@ let THREE;
 
 // ?film=video: the video tool owns the frames. No MSAA (its resolve is not bit-exact between identical
 // frames) and no speed check; frames come only from window.scFilm.render(p, t).
-const VIDEO = new URLSearchParams(location.search).get('film') === 'video';
+const FLAGS = parseFilmFlags(location.search);
+const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
+// ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
+const TIER = TIERS[FLAGS.tier || pickTier({
+  width: innerWidth, coarse: matchMedia('(pointer: coarse)').matches, deviceMemory: navigator.deviceMemory, video: VIDEO,
+})];
 
 // Counters: illustrative story figures that follow the same t as the scene (film loop, scFilm.render, or the
 // stills-mode clock), so a captured frame shows the counters for its own t.
@@ -208,15 +214,27 @@ function sampleSurface(r) {                           // a point on the box, bow
 
 const col = (r, g, b) => new THREE.Color(r, g, b);
 
-export function start(canvas) {
+export function start(canvas, tier = TIER) {
   THREE.ColorManagement.enabled = false;             // colours below are written as they should look
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !VIDEO, powerPreference: 'high-performance' });
-  try { return build(canvas, renderer); } catch (e) { renderer.dispose(); renderer.forceContextLoss(); throw e; }
+  // MSAA is fixed when the context is made, so a High start keeps it after a step down to low.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier.msaa && !VIDEO, powerPreference: 'high-performance' });
+  try {
+    let cur = build(canvas, renderer, tier);
+    const film = {
+      renderer, tier,
+      render: (p, t) => cur.render(p, t), resize: (force) => cur.resize(force),
+      // Step down to another tier: rebuild the scene with that tier's counts on the same renderer (one-time hitch).
+      setTier(next) { cur.dispose(true); cur = build(canvas, renderer, next); film.tier = next; },
+      dispose: () => cur.dispose(),
+    };
+    return film;
+  } catch (e) { renderer.dispose(); renderer.forceContextLoss(); throw e; }
 }
 
-function build(canvas, renderer) {
-  const small = innerWidth < 768, n = (x) => (small ? x >> 1 : x);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+function build(canvas, renderer, tier) {
+  // Counts scale with the tier's density; v1's halving under 768 px stays on low only.
+  const small = tier.name === 'low' && innerWidth < 768, n = (x) => (small ? x >> 1 : Math.round(x * tier.density));
+  renderer.setPixelRatio(tier.dpr === null ? devicePixelRatio : Math.min(devicePixelRatio, tier.dpr));
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 500);
@@ -279,7 +297,7 @@ function build(canvas, renderer) {
 
   // Stubble: thin three-sided spikes in rows
   {
-    const step = small ? 0.71 : 0.5, cells = [], r = rng(3), d = new THREE.Object3D(), c = new THREE.Color();
+    const step = (small ? 0.71 : 0.5) / Math.sqrt(tier.density), cells = [], r = rng(3), d = new THREE.Object3D(), c = new THREE.Color();
     for (let z = 10; z > -32; z -= step) for (let x = -22; x < 22; x += step * 0.8) {
       const px = x + (r() - 0.5) * 0.2, pz = z + (r() - 0.5) * 0.15;
       if (Math.abs(px - HUT[0]) < 1.6 && Math.abs(pz - HUT[2]) < 1.4) continue;
@@ -445,9 +463,9 @@ function build(canvas, renderer) {
   }
   resize();
 
-  function dispose() {
+  function dispose(keepRenderer) {
     scene.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
-    renderer.dispose(); renderer.forceContextLoss();  // hand the GPU context back at once
+    if (!keepRenderer) { renderer.dispose(); renderer.forceContextLoss(); }  // hand the GPU context back at once
   }
   return { render, dispose, resize, renderer };
 }
@@ -465,14 +483,14 @@ async function boot() {
   const webgl = !!probe;
   probe?.getExtension('WEBGL_lose_context')?.loseContext();  // free the probe's context at once
   const motion = matchMedia('(prefers-reduced-motion: reduce)'), reducedMotion = motion.matches;
-  if (!canvas || !webgl || reducedMotion || root.classList.contains('no-film') || new URLSearchParams(location.search).get('film') === 'off') return fallback();
+  if (!canvas || !webgl || reducedMotion || root.classList.contains('no-film') || FLAGS.mode === 'off') return fallback();
 
   let film;
   try { THREE = await import('three'); film = start(canvas); } catch (e) { console.warn('film off:', e); film?.dispose(); return fallback(); }
   if (root.classList.contains('no-film')) return (film.dispose(), fallback());  // the 4 s failsafe already chose the stills
 
   const doors = document.getElementById('doors');
-  let end = 1, raf = 0, last = 0, manual = false, shown = 0, frames = 0;
+  let end = 1, raf = 0, last = 0, manual = false, shown = 0, frames = 0, step = TIER.name === 'low' ? 'low' : 'high';
   const frameMs = [], t0 = performance.now();
   const measure = () => { end = Math.max(1, doors.offsetTop + doors.offsetHeight / 2 - innerHeight / 2); };
   const target = () => clamp01(scrollY / end);
@@ -480,6 +498,26 @@ async function boot() {
     cancelAnimationFrame(raf); removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onVis);
     canvas.removeEventListener('webglcontextlost', onLost); motion.removeEventListener('change', onMotion); film.dispose(); fallback();
   };
+  // One step down the ladder (tiers.js STEPS); the last step is the stills. The caller resets frameMs.
+  const degrade = () => {
+    step = nextStep(step);
+    if (step === 'stills') return stop();
+    if (step === 'high-dpr1') { film.renderer.setPixelRatio(1); film.resize(true); }
+    else film.setTier(TIERS.low);
+    frames = 0;
+  };
+  function benchFrame(now) {  // ?film=bench: p runs 0..1 over 20 s, t is the clock; no frame skipping, no step-downs
+    raf = requestAnimationFrame(benchFrame);
+    const s = (now - t0) / 1000;
+    if (last) frameMs.push(now - last);
+    last = now;
+    film.render(clamp01(s / 20), s); tick(s);
+    if (s < 20) return;
+    cancelAnimationFrame(raf);
+    const a = frameMs.slice(5).sort((x, y) => x - y);  // skip shader-compile frames
+    window.scBench = { median: a[a.length >> 1], p95: a[Math.floor(a.length * 0.95)], frames: a.length };
+    console.log('scBench', JSON.stringify(window.scBench));
+  }
   function frame(now) {
     if (manual) return;
     raf = requestAnimationFrame(frame);
@@ -490,13 +528,10 @@ async function boot() {
     film.render(shown, t); tick(t);
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
-      if (frameMs.length === 30) { if (VIDEO || shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else stop(); }
+      if (frameMs.length === 30) { if (shouldUse3D({ webgl, reducedMotion, frameMs })) root.classList.add('film'); else { degrade(); frameMs.length = 0; } }
     } else if (!VIDEO && frameMs.length >= 30) {                // keep watching: the smoke beat is the heaviest
       frameMs.push(dt); if (frameMs.length > 90) frameMs.shift();
-      if (tooSlow(frameMs)) {
-        if (film.renderer.getPixelRatio() > 1) { film.renderer.setPixelRatio(1); film.resize(true); frameMs.length = 30; }  // once
-        else stop();
-      }
+      if (tooSlow(frameMs)) { degrade(); frameMs.length = 30; }
     }
   }
   const onResize = () => { film.resize(); measure(); };
@@ -509,7 +544,11 @@ async function boot() {
   document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
   // with ?film=video for capture (see VIDEO above).
-  window.scFilm = { render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
-  if (VIDEO) root.classList.add('film'); else raf = requestAnimationFrame(frame);
+  window.scFilm = { get tier() { return film.tier.name; }, render: (p, t) => { manual = true; cancelAnimationFrame(raf); film.render(p, t); tick(t); } };
+  if (VIDEO || BENCH) root.classList.add('film');
+  if (BENCH) raf = requestAnimationFrame(benchFrame);
+  else if (VIDEO) {
+    if (FLAGS.p !== null || FLAGS.t !== null) { window.scFilm.render(FLAGS.p ?? 0, FLAGS.t ?? 0); root.dataset.filmReady = '1'; }
+  } else raf = requestAnimationFrame(frame);
 }
 boot();
