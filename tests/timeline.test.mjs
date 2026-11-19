@@ -37,5 +37,4 @@ test('through: piecewise scroll <-> p', () => {
 test('portrait framing only moves the camera', () => {
   const a = T.params(0.9, 1), b = T.params(0.9, 1, true);
   assert.notDeepEqual(a.camera, b.camera); assert.deepEqual({ ...a, camera: 0 }, { ...b, camera: 0 });
-  assert.deepEqual(T.params(0.5, 1).camera, T.params(0.5, 1, true).camera);
 });

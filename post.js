@@ -43,7 +43,9 @@ const GRADE = {
     vec4 c = texture2D(tDiffuse, vUv);
     float l = dot(c.rgb, vec3(0.3, 0.55, 0.15));
     c.rgb += vec3(0.022, 0.012, 0.004) * (1.0 - smoothstep(0.0, 0.5, l));          // warm lift
-    c.rgb = mix(c.rgb, vec3(0.46, 0.4, 0.36), 0.22 * uSmoke);                     // haze
+    float keep = 1.0 - smoothstep(0.35, 1.2, l);                                  // flames and lit smoke keep their colour
+    c.rgb = mix(c.rgb, vec3(l) * vec3(1.08, 0.96, 0.8), 0.35 * uSmoke * keep);   // sepia: fire and smoke drain the colour
+    c.rgb = mix(c.rgb, vec3(0.46, 0.4, 0.36), 0.22 * uSmoke * keep);              // haze
     gl_FragColor = c;
   }`,
 };

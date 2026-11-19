@@ -25,17 +25,18 @@ export function sceneAt(p) {
 const KEYS = [
   [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
-  [1.2, 3.6, -3.5, 0, 2.4, -16],    // above the field, smoke gone, straw lifting; low enough to keep the horizon
+  [1.2, 3.6, -3.5, 2.6, 2.4, -16],  // above the field, smoke gone, straw lifting; low enough to keep the horizon, the hut at the frame edge
   [-0.4, 1.45, -10.5, 0, 0.7, -14], // close on the box, bowl and cup, resting on the straw
-  [0, 1.95, -39.4, 0, 0.95, -44.5],  // the café table, city lights beyond
+  [0, 2.1, -38.2, 0, 0.9, -43.5],   // the café table whole, the terrace railing and the city falling away beyond
 ];
 // Portrait screens see a narrow slice: the hut turned into the right third, the packaging and the whole café table
 // pulled back so they fit, the table low in the frame under the doors.
 const KEYS_TALL = [
-  [0, 1.7, 9, 9, 18.5, -30],     // tilted up: sunset sky behind the hero text, sun, hut and field low in the frame
-  KEYS[1], KEYS[2],
+  [0, 1.7, 9, 10, 8.25, -30],      // sun and ridges behind the lower copy, the sky as its backdrop, the hut in frame     // tilted up: sunset sky behind the hero text, sun, hut and field low in the frame
+  [-2, 2.4, 0, -2.4, 4, -24],       // the two nearest smoke columns in the centre of the narrow frame
+  [1, 3.2, -3.5, -0.8, 3, -16],
   [-0.4, 2.0, -8.6, 0, 0.7, -14],
-  [0, 2.85, -36.8, 0, 2.3, -42],
+  [0, 3.67, -37.25, 0, 2.36, -42], // tight on the table, the skyline up between the headline and the buttons
 ];
 
 function catmull(a, b, c, d, u) {
