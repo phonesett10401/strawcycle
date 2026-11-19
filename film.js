@@ -59,7 +59,7 @@ void main() {
 // Flames: tongues along each fire line. Height per spot and per particle flicker are layered sines of t, so a
 // fixed (p, t) gives the same fire. uHot lifts the colour above the bloom threshold when post is on.
 const FLAME = /* glsl */`
-uniform float uFire, uFlameA, uHot; varying float vA; varying vec3 vC;
+uniform float uFire, uFlameA, uFlameS, uHot; varying float vA; varying vec3 vC;
 void main() {
   float life = fract(aSeed.w + uT * (0.9 + aSeed.x * 0.8));
   vec3 p = position;
@@ -69,7 +69,7 @@ void main() {
   p.x += sin(uT * 4.0 + aSeed.z * 20.0 + life * 5.0) * 0.1 * life + life * life * 0.35;  // licks, leaning with the wind
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = psize((0.6 - 0.32 * life) * (0.5 + 0.5 * uFire), mv);
+  gl_PointSize = psize((0.6 - 0.32 * life) * (0.5 + 0.5 * uFire) * uFlameS, mv);
   float flick = 0.72 + 0.16 * sin(uT * 13.0 + aSeed.x * 50.0) + 0.12 * sin(uT * 29.0 + aSeed.y * 70.0);
   vA = uFire * uFlameA * (1.0 - life) * smoothstep(0.0, 0.3, life) * flick * (0.35 + 0.85 * tongue);  // brightest up in the tongue, so fronts read as flames, not a glowing seam
   vC = mix(mix(vec3(1.0, 0.52, 0.2), vec3(1.0, 0.3, 0.05), smoothstep(0.0, 0.16, life)), vec3(0.45, 0.06, 0.01), smoothstep(0.3, 0.8, life)) * uHot * 0.6;  // orange-red; only the densest core clips
@@ -80,6 +80,35 @@ varying float vA; varying vec3 vC;
 void main() {  // a tongue: wide at the base, narrowing to the tip (point y runs down)
   vec2 c = gl_PointCoord - 0.5; c.x *= 1.8 + 2.0 * (0.5 - c.y);
   float d = length(c) * 2.0; gl_FragColor = vec4(vC, vA * pow(max(1.0 - d, 0.0), 1.2));
+}`;
+
+// sin-free value noise (cheap per fragment, same result for the same input)
+const NOISE = /* glsl */`
+float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + 1.0), f.x), f.y); }
+`;
+
+// Fire fronts: one standing ribbon per fire line (aF: metres along, height 0..1, length, seed). Tongues of different
+// heights drift along it and lick upward with t; a hot low core, dark red tips, edges that stay edges under bloom.
+const FRONT_V = /* glsl */`
+attribute vec4 aF; varying vec4 vF;
+void main() { vF = aF; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const FRONT_F = /* glsl */`
+uniform float uT, uFire, uHot; varying vec4 vF;
+${NOISE}
+void main() {
+  float x = vF.x, y = vF.y, s = vF.w * 17.0;
+  float tall = 0.16 + 0.5 * n2(vec2(x * 0.8 + s, uT * 0.6)) + 0.34 * n2(vec2(x * 2.6 - uT * 1.1, s)) * n2(vec2(x * 1.3 + 4.0, uT * 0.9 + s));
+  tall *= uFire * smoothstep(-0.2, 0.9, x) * smoothstep(-0.2, 0.9, vF.z - x);  // the ends die down
+  float lick = n2(vec2(x * 3.4, y * 3.2 - uT * 2.4)) * 0.6 + n2(vec2(x * 7.5 + s, y * 7.0 - uT * 4.3)) * 0.4;
+  float f = (tall - y) / max(tall, 0.04) + (lick - 0.5) * 0.9;  // > 0 inside a tongue
+  float a = smoothstep(0.0, 0.18, f) * smoothstep(0.0, 0.2, y);  // the foot melts into the stubble
+  if (a < 0.004) discard;
+  float core = smoothstep(0.6, 1.2, f) * (1.0 - smoothstep(0.08, 0.4, y / max(tall, 0.04)));
+  vec3 c = mix(vec3(0.5, 0.08, 0.015), vec3(1.0, 0.36, 0.06), smoothstep(0.0, 0.6, f));
+  c = mix(c, vec3(1.0, 0.66, 0.3), core);
+  gl_FragColor = vec4(c * uHot * 0.6, a * min(uFire * 2.0, 1.0));
 }`;
 
 // Embers: sparks that leave the fire lines, rise and drift downwind on t; as the air clears they sink back.
@@ -96,47 +125,55 @@ void main() {
   gl_PointSize = max(psize(0.04 + aSeed.y * 0.05, mv), 1.2);
   float flick = 0.55 + 0.45 * sin(uT * (5.0 + aSeed.x * 7.0) + aSeed.z * 40.0);
   vA = uEmber * smoothstep(0.0, 0.05, life) * (1.0 - life) * (1.0 - life) * flick * (0.3 + 0.9 * pow(fract(aSeed.x * 13.7), 2.0));  // a few bright sparks
-  vC = mix(vec3(1.0, 0.55, 0.18), vec3(0.9, 0.22, 0.04), life) * uHot * 0.8;
+  vC = mix(vec3(1.0, 0.5, 0.14), vec3(0.9, 0.2, 0.03), life) * uHot * 1.1;
 }`;
 
 // Straw blades (InstancedMesh, local blade 0..1 tall): wind bend from a rolling gust and a per-blade flutter, both
 // pure in t and position. Lit by the sun (backlit tips glow), the fire lines, the packaging glow; haze far away.
 const BLADE_V = /* glsl */`
-uniform float uT, uFireAmt, uPack, uChar; uniform vec3 uSunDir, uSunCol, uAmb, uPackPos; uniform vec4 uFires[5], uObj[3];
+uniform float uT, uFireAmt, uPack, uChar, uCool; uniform vec3 uSunDir, uSunCol, uAmb, uPackPos; uniform vec4 uFires[5], uObj[3];
 varying vec3 vCol; varying float vHaze;
 #include <fog_pars_vertex>
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 void main() {
   mat4 m = modelMatrix * instanceMatrix;
   vec3 base = m[3].xyz, w = (m * vec4(position, 1.0)).xyz;
-  float h = position.y, H = length(m[1].xyz), s = hash(base.xz), s2 = hash(base.zx + 7.0);
-  float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
-  float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
-  w.x += h * h * H * sway; w.z -= h * h * H * sway * 0.3; w.y -= h * h * H * sway * sway * 0.5;
-  vec3 n = normalize(mat3(m) * vec3(0.0, 0.0, 1.0)), v = normalize(cameraPosition - w);
-  float diff = 0.35 + 0.65 * abs(dot(n, uSunDir)), back = pow(max(dot(-v, uSunDir), 0.0), 4.0);
-  vec3 straw = mix(vec3(0.4, 0.25, 0.12), vec3(0.98, 0.72, 0.36), s) * (0.85 + 0.3 * s2);
-  vec3 light = uAmb * (0.35 + 0.65 * h) + uSunCol * (0.25 + 0.75 * h) * (diff * 0.75 + back * h * 2.6);
+  float h = position.y, H = length(m[1].xyz), s = hash(base.xz), s2 = hash(base.zx + 7.0), s3 = hash(base.xz * 1.7 + 3.1);
+  // fire first: behind each front the straw is burnt down to black stubs; just ahead of it the stubble glows
   float fg = 0.0, burnt = 0.0;
   for (int i = 0; i < 5; i++) {
     vec2 a = uFires[i].xy, b = uFires[i].zw, ab = b - a;
     float along = dot(base.xz - a, ab);
     vec2 d = base.xz - (a + ab * clamp(along / dot(ab, ab), 0.0, 1.0));
-    fg += 1.0 / (1.0 + dot(d, d) * 0.6);
     float sd = dot(base.xz - a, normalize(vec2(-ab.y, ab.x)));  // the fronts run toward +z (the camera); behind them is burnt
-    burnt = max(burnt, step(0.0, along) * step(along, dot(ab, ab)) * smoothstep(-3.4, -2.6, sd) * smoothstep(0.1, -0.5, sd));
+    fg += mix(0.3, 1.0, step(0.0, sd)) / (1.0 + dot(d, d) * 0.9);
+    burnt = max(burnt, step(0.0, along) * step(along, dot(ab, ab)) * smoothstep(-3.6, -2.6, sd + s * 0.6) * smoothstep(0.1, -0.5, sd));
   }
-  straw = mix(straw, vec3(0.06, 0.045, 0.035), uChar * burnt);  // a black charred strip
+  float dist = length(cameraPosition - base);
+  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt) * smoothstep(0.9, 2.6, dist);  // burnt to stubs; none right at the lens
+  float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
+  float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
+  w.x += h * h * H * sway; w.z -= h * h * H * sway * 0.3; w.y -= h * h * H * sway * sway * 0.5;
+  vec3 n = normalize(mat3(m) * vec3(0.0, 0.0, 1.0)), v = normalize(cameraPosition - w);
+  n *= dot(n, v) < 0.0 ? -1.0 : 1.0;  // the face we see
+  // low sun: the faces turned to it are lit, the rest glow only through (thin straw) and on the tips against the sun
+  float lit = max(dot(n, uSunDir), 0.0), through = max(-dot(n, uSunDir), 0.0), back = pow(max(dot(-v, uSunDir), 0.0), 4.0);
+  vec3 grey = vec3(0.46, 0.39, 0.32), tan = vec3(0.7, 0.52, 0.33), gold = vec3(0.92, 0.66, 0.32);  // per blade: grey-brown, tan, gold
+  vec3 straw = (s < 0.45 ? mix(grey, tan, s / 0.45) : mix(tan, gold, (s - 0.45) / 0.55)) * (0.82 + 0.3 * s2);
+  straw *= 0.5 + 0.5 * smoothstep(0.0, 0.7, h);  // darker bases, deep in the row
+  straw = mix(straw, vec3(dot(straw, vec3(0.3, 0.55, 0.15))), 0.45 * uCool);  // after sunset the field loses its colour
+  float tip = h * h, rim = back * tip * (1.6 + 4.0 * s3 * s3);  // some tips flare gold against the sun
+  vec3 light = uAmb * (0.22 + 0.78 * h) + uSunCol * mix(lit * (0.25 + 0.75 * h) + through * 0.3 * h + rim, (lit + rim) * tip * 1.3, uCool);
+  straw = mix(straw, vec3(0.05, 0.04, 0.035), uChar * burnt);  // charred
   light += vec3(1.0, 0.45, 0.14) * uFireAmt * fg * (0.4 + 0.6 * h);
   vec3 pd = w - uPackPos;
   light += vec3(1.0, 0.72, 0.4) * uPack * 0.9 * exp(-dot(pd, pd) * 0.35);  // a soft warm spill from the packaging itself
   for (int i = 0; i < 3; i++) {  // contact shadow: the straw right under each piece is darker
     vec3 od = w - uObj[i].xyz;
-    light *= 1.0 - 0.6 * uObj[i].w * exp(-dot(od.xz, od.xz) * 4.0) * smoothstep(0.5, -0.1, od.y);
+    light *= 1.0 - 0.85 * uObj[i].w * exp(-dot(od.xz, od.xz) * 2.2) * smoothstep(0.6, -0.1, od.y);
   }
   vCol = straw * light;
-  float dist = length(cameraPosition - w);
-  vHaze = max(smoothstep(8.0, 46.0, dist) * 0.55, smoothstep(-22.0, -34.0, base.z));  // the field's far edge melts into the haze
+  vHaze = max(smoothstep(8.0, 46.0, length(cameraPosition - w)) * 0.55, smoothstep(-22.0, -34.0, base.z));  // the field's far edge melts into the haze
   vec4 mvPosition = viewMatrix * vec4(w, 1.0);
   gl_Position = projectionMatrix * mvPosition;
   #include <fog_vertex>
@@ -154,31 +191,31 @@ void main() {
 // outline is value noise in the fragment shader, turning slowly with t; the lower part of each column and the
 // underside of each puff take the fire colour. The column base is clear so the flames show beneath it.
 const SMOKE = /* glsl */`
-uniform float uS, uSmokeA, uSmokeCap, uClear; uniform vec3 uSmokeLow, uSmokeHigh, uSmokeFire; varying float vA, vRot; varying vec3 vC, vF;
+uniform float uS, uSmokeA, uSmokeCap, uClear, uFoot, uHfPow, uPuff; uniform vec3 uSmokeLow, uSmokeHigh, uSmokeFire; varying float vA, vRot; varying vec3 vC, vF;
 void main() {
-  float hf = aSeed.w, h = hf * uS;  // height follows the smoke amount, so the fall is the rise run backwards
+  float hf = pow(aSeed.w, uHfPow), h = hf * uS;  // height follows the smoke amount, so the fall is the rise run backwards (phones: more puffs low, so each column stands on its fire)
+  float top = smoothstep(0.55, 1.0, hf) * uS;  // up high the plume flattens and spreads into a ceiling
   vec3 p = position;
-  p.y += 0.3 + h * 19.0 + sin(uT * 0.35 + aSeed.z * 6.28) * 0.4 * uS;
-  float wide = 0.5 + hf * 1.4 + h * h * 5.5 + uClear * (1.0 + hf * 5.0);  // billows out as it climbs, leaning with the wind; drifts apart as the air clears
+  float y = h * 26.0;
+  p.y += 0.15 + y - max(y - 15.0, 0.0) * 0.65 + sin(uT * 0.35 + aSeed.z * 6.28) * 0.4 * uS;
+  float wide = 0.25 + hf * 0.9 + h * h * 4.5 + top * 13.0 + uClear * (1.0 + hf * 5.0);  // a narrow foot on the fire line, billowing as it climbs
   // triangular spread (two seeds) so a column thins out at its sides instead of stopping on a straight edge
   float jx = aSeed.x + fract(aSeed.y * 7.31 + aSeed.w * 3.7) - 1.0, jz = aSeed.y + fract(aSeed.x * 5.17 + aSeed.w * 1.3) - 1.0;
-  p.x += jx * wide * 0.75 + h * h * 8.0 + sin(uT * 0.22 + aSeed.y * 6.28 + hf * 4.0) * 0.5 * uS + sin(h * 0.5 + aSeed.z * 2.0) * h * 0.25;
-  p.z += jz * wide * 0.5;
+  p.x += jx * wide * 0.75 + h * h * 15.0 + sin(uT * 0.22 + aSeed.y * 6.28 + hf * 4.0) * 0.5 * uS + sin(h * 0.5 + aSeed.z * 2.0) * h * 0.25;  // leaning downwind
+  p.z += jz * wide * (0.5 + 0.6 * top);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = min(psize((1.2 + 1.2 * fract(aSeed.y * 5.3 + aSeed.z)) * (1.0 + h * 5.5), mv), uSmokeCap * uScale * (0.55 + 0.45 * aSeed.z));
-  // clear at the base (flames show through), thinning as it climbs, and faded right at the lens (the costliest puffs)
-  vA = uS * (1.0 - 0.55 * uClear) * uSmokeA * smoothstep(0.0, 0.12, hf) * (1.0 - 0.8 * hf) * smoothstep(2.0, 7.0, -mv.z);
+  gl_PointSize = min(psize((0.55 + 0.9 * fract(aSeed.y * 5.3 + aSeed.z)) * (uPuff + h * 8.0 + top * 4.0), mv), uSmokeCap * uScale * (0.55 + 0.45 * aSeed.z));
+  // thin right at the fire line, densest a little above it, thinning as it climbs, faded right at the lens
+  vA = uS * (1.0 - 0.55 * uClear) * uSmokeA * smoothstep(-0.02, uFoot, hf) * (1.0 - 0.6 * hf) * smoothstep(2.0, 7.0, -mv.z);
   vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.05, 0.5, hf));
-  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.4, hf));
+  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.5, hf));
   vA *= 0.45 + 0.9 * fract(aSeed.w * 7.7 + aSeed.x * 3.1);  // some puffs dense, some thin
   vRot = aSeed.z * 6.28 + uT * (0.04 + 0.06 * aSeed.x) * (aSeed.y > 0.5 ? 1.0 : -1.0);
 }`;
 const SMOKE_F = /* glsl */`
 varying float vA, vRot; varying vec3 vC, vF;
-float h2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }  // no sin: cheaper per fragment
-float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), f.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + 1.0), f.x), f.y); }
+${NOISE}
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   if (dot(c, c) > 0.25) discard;  // the sprite's corners never show: skip the noise there
@@ -197,51 +234,54 @@ void main() {
 // spot where the packaging forms, then settle into the box, bowl and cup. Normal blending, so they stay straw gold.
 const FIBRE = /* glsl */`
 attribute vec3 aStart; uniform float uFold, uFibA, uFibOut, uFibSize, uSurf; uniform vec3 uC;
-varying float vA, vAng, vMot, vTail, vBody, vShade, vNear;
+varying float vA, vAng, vMot, vTail, vBody, vShade, vNear, vPx, vTh; varying vec3 vFC;
 vec3 bez(vec3 a, vec3 b, vec3 c, vec3 d, float k) { float m = 1.0 - k; return m * m * m * a + 3.0 * m * m * k * b + 3.0 * m * k * k * c + k * k * k * d; }
 vec3 at(float fold, float t) {
-  float u = clamp((fold - aSeed.x * 0.3) / 0.55, 0.0, 1.0), k = clamp((u - 0.12) / 0.7, 0.0, 1.0);
+  float u = clamp((fold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), k = clamp((u - 0.12) / 0.7, 0.0, 1.0);  // staggered: some still lifting while others land
   // the ribbon: from the stubble front-left, up and across, back over to above the forming spot
-  vec3 s = bez(uC + vec3(-3.2, -2.0, 2.6), uC + vec3(-4.4, 1.7, -0.8), uC + vec3(3.4, 1.5, 0.6), uC + vec3(0.0, -1.3, -0.1), k);
-  float wid = 0.08 + 0.8 * smoothstep(0.0, 0.55, k) * (1.0 - 0.7 * smoothstep(0.7, 1.0, k));  // a thin tail off the field, full in the middle, gathering at the end
+  vec3 s = bez(uC + vec3(-2.4, -2.35, 2.0), uC + vec3(-4.4, 1.7, -0.8), uC + vec3(3.4, 1.5, 0.6), uC + vec3(0.0, -1.3, -0.1), k);  // it leaves the stubble itself
+  float wid = 0.22 + 0.66 * smoothstep(0.0, 0.55, k) * (1.0 - 0.7 * smoothstep(0.7, 1.0, k));  // a patch lifting off the field, full in the middle, gathering at the end
   vec3 j = vec3(fract(aSeed.z * 13.1) + fract(aSeed.y * 3.7), fract(aSeed.z * 7.9) + fract(aSeed.w * 5.1), fract(aSeed.z * 5.3) + fract(aSeed.x * 9.3)) - 1.0;  // denser at the core
-  s += j * wid * (1.0 + 2.0 * step(fract(aSeed.z * 31.7), 0.06)) + vec3(0.0, sin(k * 9.0 - t * 1.2 + aSeed.y * 6.28) * 0.06, 0.0);  // a few strays; a slow ripple
+  s += j * wid * (1.0 + 1.0 * step(fract(aSeed.z * 31.7), 0.06)) + vec3(0.0, sin(k * 9.0 - t * 1.2 + aSeed.y * 6.28) * 0.06, 0.0);  // a few strays; a slow ripple
   float lift = smoothstep(0.0, 0.14, u), land = smoothstep(0.82, 1.0, u);
   vec3 p = mix(mix(aStart, s, lift), position, land);
   p.y += (1.0 - lift) * 0.03 * sin(t * 1.5 + aSeed.w * 30.0);
   return p;
 }
 void main() {
-  float u = clamp((uFold - aSeed.x * 0.3) / 0.55, 0.0, 1.0), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
+  float u = clamp((uFold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
   mat4 pm = projectionMatrix * modelViewMatrix;
   vec4 c1 = pm * vec4(at(uFold, uT), 1.0), c0 = pm * vec4(at(uFold - 0.02, uT - 0.1), 1.0);
   if (c1.w < 0.05) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); gl_PointSize = 0.0; vA = 0.0; return; }  // at or behind the lens
   gl_Position = c1;
   vNear = smoothstep(5.0, 1.5, c1.w);  // the closest fibres go soft, like a shallow focus
-  float body = (0.5 - 0.2 * e + 0.15 * w) * uFibSize * uScale / c1.w;  // longer, thinner straws
+  float r1 = fract(aSeed.w * 13.7 + aSeed.x * 3.1), r2 = fract(aSeed.y * 9.1 + aSeed.w * 2.3), r3 = fract(aSeed.z * 5.9 + aSeed.y * 1.7);
+  float body = (0.5 - 0.2 * e + 0.15 * w) * (0.55 + 0.9 * r1) * uFibSize * uScale / c1.w;  // straws of many lengths
   vec2 d = c0.w > 0.0 ? (c1.xy / c1.w - c0.xy / c0.w) * vec2(projectionMatrix[1][1] / projectionMatrix[0][0], 1.0) * uScale / projectionMatrix[1][1] : vec2(0.0);
   float L = min(length(d), 0.018 * uScale), S = max(body, 2.0 * L + 2.0);  // the trail fits behind the centre; capped (each fibre is an S x S quad: fill cost)
   gl_PointSize = S;
+  vPx = 1.0 / S; vTh = 0.6 + 0.8 * r2;
+  vFC = r3 < 0.5 ? mix(vec3(1.0, 0.68, 0.3), vec3(0.78, 0.56, 0.34), r3 * 2.0) : mix(vec3(0.78, 0.56, 0.34), vec3(0.95, 0.86, 0.64), r3 * 2.0 - 1.0);  // gold, tan, bleached
   vBody = body / S; vTail = L / S; vMot = atan(-d.y, d.x);  // point y runs down
-  vA = uFibA * (0.15 + 0.85 * smoothstep(0.02, 0.25, e)) * (0.75 + 0.25 * w) * (1.0 - uSurf) * (1.0 - uFibOut) * (1.0 - 0.6 * vNear);  // near opaque in flight, faint on the ground, gone once the surface fills in
+  vA = uFibA * (0.15 + 0.85 * smoothstep(0.02, 0.25, e)) * (0.75 + 0.25 * w) * (1.0 - uSurf) * (1.0 - uFibOut) * (1.0 - 0.6 * vNear) * (1.0 - 0.55 * step(fract(aSeed.z * 31.7), 0.06));  // near opaque in flight (strays fainter), faint on the ground, gone once the surface fills in
   vShade = 0.7 + 0.45 * fract(aSeed.w * 7.13);
   vAng = aSeed.w * 6.28 + e * 4.0;
 }`;
 const FIBRE_F = /* glsl */`
-uniform vec3 uFibCol; varying float vA, vAng, vMot, vTail, vBody, vShade, vNear;
+uniform vec3 uFibCol; varying float vA, vAng, vMot, vTail, vBody, vShade, vNear, vPx, vTh; varying vec3 vFC;
 void main() {
   vec2 c = gl_PointCoord - 0.5;
   float ang = vTail > 0.02 ? vMot : vAng;  // in flight a straw lies along its path (no crossing jacks)
-  float s = sin(ang), k = cos(ang), th = max(0.04 * vBody, 0.012) * (1.0 + 1.5 * vNear);  // thin: one straw, not a smear
+  float s = sin(ang), k = cos(ang), th = max(0.04 * vBody * vTh * (1.0 + 1.5 * vNear), 0.6 * vPx);  // thin, but never under a pixel (no jaggies)
   vec2 r = mat2(k, -s, s, k) * c;
-  float body = smoothstep(th, 0.0, abs(r.y)) * smoothstep(0.48 * vBody, 0.3 * vBody, abs(r.x));
+  float body = smoothstep(th + vPx, max(th - vPx, 0.0), abs(r.y)) * smoothstep(0.48 * vBody, 0.3 * vBody, abs(r.x));
   s = sin(vMot); k = cos(vMot);
   vec2 m = mat2(k, -s, s, k) * c;  // m.x along the motion; the trail lies behind (m.x < 0)
   float g = clamp(-m.x / max(vTail, 1e-3), 0.0, 1.0);
   float tail = vTail > 0.02 ? (1.0 - g) * (1.0 - g) * step(m.x, 0.0) * step(g, 0.999) * smoothstep(th * 0.9, 0.0, abs(m.y)) : 0.0;
   float a = vA * max(body, tail * 0.5);
   if (a < 0.003) discard;
-  gl_FragColor = vec4(uFibCol * vShade * (0.85 + 0.3 * smoothstep(0.0, -0.5, r.y)), a);  // lit from the low sun on one side
+  gl_FragColor = vec4(vFC * uFibCol.r * vShade * (0.7 + 0.5 * smoothstep(th, -th, r.y)), a);  // lit on top, darker underneath
 }`;
 
 const TRAIL = /* glsl */`
@@ -276,14 +316,15 @@ void main() { float d = length(gl_PointCoord - 0.5) * 2.0; gl_FragColor = vec4(v
 // Windows on a grid per block; one tone per block (its front face z): mostly sodium, some warm white, a few cool
 // fluorescent offices; some windows dark.
 const CITY = /* glsl */`
-uniform float uCity; varying float vA; varying vec3 vC;
+uniform float uCity, uWin, uLitF; varying float vA; varying vec3 vC;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = max(psize(0.12 + aSeed.y * 0.05, mv), 1.0);
+  gl_PointSize = max(psize((0.12 + aSeed.y * 0.05) * uWin, mv), uWin);
   float b = fract(sin(position.z * 91.7) * 43758.5453);
   if (aSeed.z > 0.85) b = fract(b + 0.5);  // a few windows in another tone
-  vA = uCity * step(0.42, aSeed.w) * (0.2 + 0.8 * aSeed.w * aSeed.w) * (1.0 - 0.6 * smoothstep(70.0, 135.0, -mv.z));  // many dark; far windows sink into the haze
+  float floorLit = fract(sin(floor(position.y / 0.9) * 17.3 + position.z * 7.1) * 43758.5453);  // whole floors on or off
+  vA = uCity * step(floorLit < uLitF ? 0.3 : 0.93, aSeed.w) * (0.25 + 0.75 * aSeed.w * aSeed.w) * (1.0 - 0.5 * smoothstep(70.0, 150.0, -mv.z)) * (0.6 + 0.4 * uWin);  // phones: bigger, brighter windows
   vC = (b < 0.62 ? vec3(1.0, 0.58, 0.26) : b < 0.88 ? vec3(1.0, 0.78, 0.55) : vec3(0.7, 0.82, 1.0)) * (0.75 + 0.5 * fract(aSeed.x * 7.3));
 }`;
 const CITY_F = /* glsl */`
@@ -316,7 +357,8 @@ void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix 
 // Sky: coral away from the sun, gold toward it, mauve, then dusk blue overhead. The broad glow hugs the horizon
 // around the sun (kept narrow so the hero heading, left of it, sits on calmer sky); the disc is HDR so it blooms.
 const SKY_F = /* glsl */`
-uniform vec3 uHorizon, uCoral, uMid, uZenith, uSunDir, uSunCol, uGlow; uniform float uSunAmt, uDisc, uCity; varying vec3 vDir;
+uniform vec3 uHorizon, uCoral, uMid, uZenith, uSunDir, uSunCol, uGlow, uCloudCol; uniform float uSunAmt, uDisc, uCity, uCloud, uCityGlow; varying vec3 vDir;
+${NOISE}
 void main() {
   vec3 d = normalize(vDir);
   float e = max(d.y, 0.0), s = max(dot(d, uSunDir), 0.0);
@@ -325,39 +367,97 @@ void main() {
   col = mix(col, uMid, smoothstep(0.0, 0.14, e));
   col = mix(col, uZenith, pow(smoothstep(0.04, 0.6, e), 0.75));
   col += uSunCol * uSunAmt * (near * exp(-abs(d.y - uSunDir.y * 0.6) * 16.0) * 0.5 + pow(s, 12.0) * 0.16 + pow(s, 60.0) * 0.55 + pow(s, 900.0) * 1.4);
-  col += vec3(1.0, 0.58, 0.25) * uDisc * smoothstep(0.99975, 0.99979, s);
+  // a few thin streaks of cloud: dusky away from the sun, their undersides gold toward it
+  float az = atan(d.x, -d.z), band = smoothstep(0.07, 0.12, e) * smoothstep(0.34, 0.2, e);
+  float cl = smoothstep(0.5, 0.85, n2(vec2(az * 2.2, e * 26.0)) * 0.7 + n2(vec2(az * 9.0, e * 70.0)) * 0.3) * band * uCloud;
+  col = mix(col, uCloudCol + uSunCol * uSunAmt * pow(s, 8.0) * 1.6, cl * 0.75);
+  col = mix(col, vec3(1.0, 0.52, 0.17) * uDisc * (0.8 + 0.2 * smoothstep(0.99975, 0.99999, s)), smoothstep(0.99974, 0.99979, s));  // the warmest point: pale gold, a little limb darkening
   col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.006;  // dither: no banding in the long gradient
-  col += uGlow * uCity * exp(-e * 12.0) * smoothstep(0.2, 1.0, -d.z);
+  col += uGlow * uCityGlow * exp(-e * 28.0) * smoothstep(0.2, 1.0, -d.z);  // the city's warm glow, only low over the skyline
   gl_FragColor = vec4(col, 1.0);
   #include <tonemapping_fragment>
 }`;
 
 // ---- the world ------------------------------------------------------------------------------
 // Ridges: their colour by height, melting into the haze (fog colour) at the base so they meet the far field softly.
-const RIDGE_V = /* glsl */`varying float vY; varying vec3 vW;
-void main() { vY = position.y; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
+const RIDGE_V = /* glsl */`attribute float aTop; varying float vY, vTop; varying vec3 vW;
+void main() { vY = position.y; vTop = aTop; vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`;
 const RIDGE_F = /* glsl */`
-uniform vec3 uCol, uHaze, uSunDir, uSunCol; uniform float uTop; varying float vY; varying vec3 vW;
+uniform vec3 uCol, uHaze, uSunDir, uSunCol; uniform float uTop; varying float vY, vTop; varying vec3 vW;
+${NOISE}
 void main() {
   vec3 c = mix(uHaze, uCol, pow(smoothstep(-2.0, uTop, vY), 0.6));
-  c += uSunCol * pow(max(dot(normalize(vW - cameraPosition), uSunDir), 0.0), 24.0) * smoothstep(uTop - 7.0, uTop, vY) * 0.7;  // crests catch the sun
+  c *= 0.9 + 0.2 * n2(vec2(vW.x * 0.12, vY * 0.5)) * smoothstep(-2.0, vTop, vY);  // forest and folds on the slopes
+  float toward = max(dot(normalize(vW - cameraPosition), uSunDir), 0.0);
+  float crest = smoothstep(vTop - 3.0, vTop, vY);
+  c += uSunCol * crest * crest * 0.4 * pow(toward, 8.0);  // a soft glow on the crests toward the sun, no outline
   gl_FragColor = vec4(c, 1.0);
   #include <tonemapping_fragment>
 }`;
 
+// Tree line: lumpy crowns (each instance its own lobes), dark and backlit: rims and tops catch the low light on the
+// sun side, the farther trees fade into the haze, low mist at their feet.
+const TREE_V = /* glsl */`
+varying vec3 vN, vW; varying float vZ;
+void main() {
+  mat4 m = modelMatrix * instanceMatrix;
+  vec3 c = m[3].xyz, p = position;
+  float id = fract(sin(dot(c.xz, vec2(12.9898, 78.233))) * 43758.5453);
+  p *= 1.0 + 0.24 * sin(p.x * 3.1 + id * 20.0) * sin(p.y * 2.6 + id * 11.0) + 0.14 * sin(p.z * 4.3 + id * 7.0) + 0.06 * sin(p.x * 9.0 + p.y * 7.0 + id * 40.0);  // lobes and leafy clumps
+  vec4 w = m * vec4(p, 1.0);
+  vW = w.xyz; vN = normalize(mat3(m) * normal); vZ = c.z;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+const TREE_F = /* glsl */`
+uniform vec3 uHaze, uDark, uSunDir, uSunCol; uniform float uSmoke; varying vec3 vN, vW; varying float vZ;
+${NOISE}
+void main() {
+  float far = smoothstep(-60.0, -82.0, vZ);
+  vec3 c = mix(uDark, uHaze, 0.12 + 0.55 * far) * (0.8 + 0.35 * n2(vW.xy * 2.2 + vZ)), v = normalize(cameraPosition - vW);  // foliage, not stone
+  float rim = pow(1.0 - max(dot(vN, v), 0.0), 4.0) * smoothstep(0.2, 0.8, vN.y);  // only the upper edges of the crowns
+  float toward = pow(max(dot(-v, uSunDir), 0.0), 16.0);
+  c += uSunCol * rim * (0.05 + 0.9 * toward) * (1.0 - 0.6 * far);
+  c = mix(c, uHaze, smoothstep(1.8, -0.3, vW.y) * 0.75);  // low ground mist
+  gl_FragColor = vec4(mix(c, uHaze, uSmoke), 1.0);
+  #include <tonemapping_fragment>
+}`;
+
+// Field ground under the blades: furrows between the harvest rows (long shadows toward the low sun), a black
+// smouldering strip behind each fire front and a warm glow on the stubble just ahead of it.
+const GROUND_FX = /* glsl */`
+  if (uCityGround < 0.99) {
+    float rw = abs(fract(vWP.x / 0.3) - 0.5) * 2.0, fade = 1.0 - smoothstep(0.15, 0.5, fwidth(vWP.x / 0.3));
+    gl_FragColor.rgb *= 1.0 - uRows * (1.0 - rw) * fade * (1.0 - uCityGround);
+    float burnt = 0.0, ahead = 0.0, smoulder = 0.0;
+    if (uChar + uFireAmt > 0.001) for (int i = 0; i < 5; i++) {  // only while the fields burn
+      vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
+      float L = length(ab), k = dot(vWP.xz - a, ab) / (L * L), e = min(k, 1.0 - k) * L;
+      float sd = dot(vWP.xz - a, vec2(-ab.y, ab.x) / L) + (n2(vWP.xz * 0.9) - 0.5) * 1.2;
+      float b = smoothstep(-0.9, 0.3, e) * smoothstep(-3.8, -2.6, sd) * smoothstep(0.2, -0.4, sd);
+      burnt = max(burnt, b); smoulder = max(smoulder, b * smoothstep(-1.4, -0.2, sd) * n2(vWP.xz * 3.0 + uT * 0.3));
+      ahead += smoothstep(-0.6, 0.6, e) * smoothstep(-0.5, 0.0, sd) * exp(-max(sd, 0.0) * 1.1);
+    }
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.03, 0.026, 0.024) + vec3(0.7, 0.14, 0.02) * uFireAmt * smoulder, uChar * burnt * 0.92);
+    gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * uFireAmt * min(ahead, 1.2) * 0.55;
+  }
+`;
+
 const groundH = (x, z) => (z < -36 ? 0 : (0.1 * Math.sin(x * 0.9) * Math.cos(z * 0.7) + 0.05 * Math.sin(x * 2.3 + z * 1.7)) * smooth(-36, -31, z));
-const SMOKE_CAP = { low: 0.32, high: 0.17, ultra: 0.35 };  // largest smoke puff, x uScale (screen overdraw)
+const SMOKE_CAP = { low: 0.26, high: 0.17, ultra: 0.35 };  // largest smoke puff, x uScale (screen overdraw)
 const BLADES = 24000;                                // field blades at density 1 (High x10, Ultra x30)
 const C = [0, 2.4, -14];                              // where the straw swirls and folds
 const ROW = 0.3, HILL = 0.22;                         // harvest rows (along z) and the hill spacing along a row
 const HUT = [9.5, 0, -16];                            // right of the hero text, the sun setting behind it
 const TABLE = [0, 0.915, -42];
+const CANDLE = [TABLE[0] - 0.85, TABLE[1], TABLE[2] + 0.72];  // front left of the table, in view (not behind the box)
 const FIRES = [[-9, -12, -3, -13], [2, -11, 8, -12.5], [-6, -19, 1, -20], [4, -22, 11, -21], [-12, -25, -5, -27]];
 // box, bowl, cup: where they fold (world), where they land on the table (offset), resting turn
+// (folded at FOLD_S scale, bedded at the stubble roots, so they read as packaging, not furniture)
+const FOLD_S = 0.6;
 const OBJ = [
-  { at: [-1.35, 0.2, -14], land: [-0.42, 0, 0.1], rot: 0.35 },
-  { at: [0, 0.2, -13.6], land: [0.5, 0, -0.15], rot: 0 },
-  { at: [1.3, 0.19, -14], land: [0.12, 0, -0.55], rot: 0 },
+  { at: [-0.82, groundH(-0.82, -14), -14], land: [-0.42, 0, 0.1], rot: 0.35 },
+  { at: [0.05, groundH(0.05, -13.7), -13.7], land: [0.5, 0, -0.15], rot: 0 },
+  { at: [0.78, groundH(0.78, -14.05), -14.05], land: [0.12, 0, -0.55], rot: 0 },
 ];
 const bowlR = (y) => 0.32 + 0.3 * Math.sqrt(y / 0.4);
 const cupR = (y) => 0.21 + 0.11 * y / 0.75;
@@ -373,7 +473,7 @@ function sampleSurface(r) {                           // a point on the box, bow
   } else if (o === 1) { const y = r() < 0.35 ? 0.4 : 0.4 * r() ** 0.7, rr = bowlR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
   else if (r() < 0.3) { const rr = r() < 0.6 ? 0.34 : Math.sqrt(r()) * 0.34; p = [Math.cos(a) * rr, 0.78, Math.sin(a) * rr]; }
   else { const y = 0.75 * r(), rr = cupR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
-  return p.map((v, i) => v + OBJ[o].at[i]);
+  return p.map((v, i) => v * FOLD_S + OBJ[o].at[i]);
 }
 
 const col = (r, g, b) => new THREE.Color(r, g, b);
@@ -442,16 +542,16 @@ function build(canvas, renderer, tier) {
 
   const U = {
     uT: { value: 0 }, uScale: { value: 1 }, uPR: { value: 1 }, uDust: { value: 0 }, uFire: { value: 0 }, uEmber: { value: 0 },
-    uClear: { value: 0 }, uHot: { value: 1 }, uFlameA: { value: small ? 1.5 : 1 / Math.sqrt(tier.density) }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uFibSize: { value: small ? 1 : tier.density ** -0.25 }, uSurf: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
-    uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 },
+    uClear: { value: 0 }, uHot: { value: 1 }, uFlameA: { value: 1 }, uFlameS: { value: 1 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uFibSize: { value: small ? 1 : tier.density ** -0.25 }, uSurf: { value: 0 }, uC: { value: new THREE.Vector3(...C) },
+    uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 }, uWin: { value: small ? 2.4 : 1 }, uLitF: { value: small ? 0.8 : 0.45 },
     uFA: { value: OBJ.map(() => new THREE.Vector3()) }, uFM: { value: OBJ.map(() => new THREE.Vector3()) }, uFE: { value: OBJ.map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
     uSmokeLow: { value: col(0.5, 0.3, 0.2) }, uSmokeHigh: { value: col(0.5, 0.48, 0.48) }, uSmokeFire: { value: col(0, 0, 0) },
-    uSmokeA: { value: 0 }, uSmokeCap: { value: SMOKE_CAP[tier.name] }, uFibCol: { value: col(1, 0.7, 0.32) },
+    uSmokeA: { value: 0 }, uSmokeCap: { value: SMOKE_CAP[tier.name] }, uFoot: { value: small ? 0.04 : 0.13 }, uHfPow: { value: small ? 1.5 : 1 }, uPuff: { value: small ? 1.8 : 1 }, uFibCol: { value: col(1, 0.7, 0.32) },
     uSunDirW: { value: new THREE.Vector3() }, uRim: { value: col(0, 0, 0) }, uDrop: { value: 0 },
   };
   const bladeU = {
     uT: U.uT, uFireAmt: { value: 0 }, uPack: { value: 0 }, uSunDir: { value: new THREE.Vector3() },
-    uSunCol: { value: col(1, 0.6, 0.3) }, uAmb: { value: col(0, 0, 0) }, uChar: { value: 0 }, uPackPos: { value: new THREE.Vector3(...C) },
+    uSunCol: { value: col(1, 0.6, 0.3) }, uAmb: { value: col(0, 0, 0) }, uChar: { value: 0 }, uCool: { value: 0 }, uRows: { value: 0 }, uPackPos: { value: new THREE.Vector3(...C) },
     uFires: { value: FIRES.map((q) => new THREE.Vector4(...q)) }, uObj: { value: OBJ.map(() => new THREE.Vector4()) },
   };
   function points(count, seed, place, vert, frag = SOFT, blending = THREE.AdditiveBlending) {
@@ -468,11 +568,17 @@ function build(canvas, renderer, tier) {
   const lambert = (color, o = {}) => new THREE.MeshLambertMaterial({ color, ...o });
   const mesh = (geo, mat, x = 0, y = 0, z = 0, parent = scene) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
 
+  const shadowTex = (() => {  // a soft round shadow (alpha map)
+    const N = 64, a = new Uint8Array(N * N * 4);
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, k = Math.max(0, 1 - (u * u + v * v)); a.fill(Math.round(255 * k * k), (y * N + x) * 4, (y * N + x) * 4 + 4); }
+    const t = new THREE.DataTexture(a, N, N); t.needsUpdate = true; return t;
+  })();
+
   // Sky dome (follows the camera) with stars
   const skyU = {
     uHorizon: { value: col(0, 0, 0) }, uCoral: { value: col(0, 0, 0) }, uMid: { value: col(0, 0, 0) }, uZenith: { value: col(0, 0, 0) },
     uSunDir: { value: new THREE.Vector3() }, uSunCol: { value: col(1, 0.62, 0.3) }, uSunAmt: { value: 0 }, uDisc: { value: 0 },
-    uGlow: { value: col(0.9, 0.48, 0.22) }, uCity: U.uCity,
+    uGlow: { value: col(0.9, 0.48, 0.22) }, uCity: U.uCity, uCloud: { value: 0 }, uCloudCol: { value: col(0, 0, 0) }, uCityGlow: { value: 0 },
   };
   const sky = new THREE.Group(); scene.add(sky);
   const dome = mesh(new THREE.SphereGeometry(300, 32, 16), new THREE.ShaderMaterial({ uniforms: skyU, vertexShader: SKY_V, fragmentShader: SKY_F, side: THREE.BackSide, depthWrite: false }), 0, 0, 0, sky);
@@ -484,9 +590,14 @@ function build(canvas, renderer, tier) {
   const ridges = [[-150, 2, 7, 5], [-190, 5, 13, 3], [-230, 9, 22, 4], [-270, 13, 30, 6]].map(([z, lo, hi, seed]) => {
     const r = rng(seed), N = 200, v = [], idx = [];
     let y = lo;
-    for (let i = 0; i <= N; i++) { y = Math.min(hi, Math.max(lo, y + (r() - 0.5) * 3)); v.push(-280 + i * 2.8, y + (r() - 0.5) * 0.8, z, -280 + i * 2.8, -6, z); }
+    const top = [], ph = r() * 6.28;
+    for (let i = 0; i <= N; i++) {
+      y = Math.min(hi, Math.max(lo, y + (r() - 0.5) * 3));
+      const c = lo + (y - lo) * (0.55 + 0.45 * Math.sin(i * 0.045 + ph) * Math.sin(i * 0.017 + ph * 2)) + (r() - 0.5) * 0.8;  // big massifs and saddles, not one even saw
+      v.push(-280 + i * 2.8, c, z, -280 + i * 2.8, -6, z); top.push(c, c);
+    }
     for (let i = 0; i < N; i++) idx.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setIndex(idx);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); g.setAttribute('aTop', new THREE.Float32BufferAttribute(top, 1)); g.setIndex(idx);
     return mesh(g, new THREE.ShaderMaterial({ uniforms: { uCol: { value: col(0, 0, 0) }, uHaze: { value: col(0, 0, 0) }, uTop: { value: hi }, uSunDir: { value: new THREE.Vector3() }, uSunCol: { value: col(0, 0, 0) } }, vertexShader: RIDGE_V, fragmentShader: RIDGE_F }));
   });
 
@@ -498,18 +609,18 @@ function build(canvas, renderer, tier) {
       const x = P.getX(i), z = P.getZ(i), k = smooth(-30, -37, z), v = 0.85 + r() * 0.3;
       P.setY(i, groundH(x, z) + r() * 0.06);
       cols.push((0.72 * (1 - k) + 0.15 * k) * v, (0.5 * (1 - k) + 0.11 * k) * v, (0.24 * (1 - k) + 0.1 * k) * v);
-      field.push(0.6 * v, 0.4 * v, 0.2 * v);  // dry soil and chaff between the rows: a filled warm base
+      field.push(0.44 * v, 0.31 * v, 0.19 * v);  // bare dry soil and chaff between the rows
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); g.setAttribute('aField', new THREE.Float32BufferAttribute(field, 3));
     g.computeVertexNormals();
     // The field runs on to the hazy horizon; the dark city ground only fades in for the flight to the cafe.
     const gm = lambert(0xffffff, { vertexColors: true, flatShading: true, fog: false });  // own haze below: on Low three fogs after tone mapping (a dark band under the ridges)
     gm.onBeforeCompile = (s) => {
-      s.uniforms.uCityGround = U.uCityGround; s.uniforms.uDrop = U.uDrop; s.uniforms.uHaze = { value: scene.fog.color };
-      s.vertexShader = 'attribute vec3 aField; uniform float uCityGround, uDrop; varying float vGH;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= uDrop * 12.0 * (1.0 - smoothstep(-50.0, -46.0, transformed.z));').replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(aField, vColor.rgb, uCityGround);')
+      Object.assign(s.uniforms, { uCityGround: U.uCityGround, uDrop: U.uDrop, uHaze: { value: scene.fog.color }, uFires: bladeU.uFires, uChar: bladeU.uChar, uFireAmt: bladeU.uFireAmt, uRows: bladeU.uRows, uT: U.uT });
+      s.vertexShader = 'attribute vec3 aField; uniform float uCityGround, uDrop; varying float vGH; varying vec3 vWP;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= uDrop * 12.0 * (1.0 - smoothstep(-50.0, -46.0, transformed.z));\nvWP = transformed;').replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(aField, vColor.rgb, uCityGround);')
         .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGH = mix(min(0.95, smoothstep(8.0, 46.0, -mvPosition.z) * 0.55 + smoothstep(36.0, 80.0, -mvPosition.z) * 0.4 + smoothstep(-26.0, -40.0, transformed.z) * 0.45), smoothstep(2.0, 32.0, -mvPosition.z) * 0.92, uCityGround);');
       // the bare ground past the blades fades to the same haze as the far blades
-      s.fragmentShader = 'varying float vGH; uniform vec3 uHaze;\n' + s.fragmentShader.replace('#include <tonemapping_fragment>', 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');  // before tone mapping, like the ridges and blades
+      s.fragmentShader = 'varying float vGH; varying vec3 vWP; uniform vec3 uHaze; uniform vec4 uFires[5]; uniform float uChar, uFireAmt, uRows, uCityGround, uT;\n' + NOISE + s.fragmentShader.replace('#include <tonemapping_fragment>', GROUND_FX + 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');  // before tone mapping, like the ridges and blades
     };
     mesh(g, gm);
   }
@@ -518,7 +629,7 @@ function build(canvas, renderer, tier) {
   {
     const count = small ? 18000 : n(BLADES), r = rng(3), d = new THREE.Object3D();
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.32, 0.5, 0, 0.32, 0.5, 0, 0, 1, 0], 3));
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.24, 0.55, 0, 0.24, 0.55, 0, 0, 1, 0], 3));  // thin, tapering
     g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
     const mat = new THREE.ShaderMaterial({
       uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...bladeU }, vertexShader: BLADE_V, fragmentShader: BLADE_F,
@@ -546,28 +657,36 @@ function build(canvas, renderer, tier) {
   }
 
   // A broken tree line at the far edge of the field, hazed by the fog; it sinks away before the cafe.
+  const treeU = { uHaze: { value: col(0, 0, 0) }, uDark: { value: col(0, 0, 0) }, uSunDir: { value: new THREE.Vector3() }, uSunCol: { value: col(0, 0, 0) }, uSmoke: { value: 0 } };
   const trees = (() => {
     const r = rng(16), d = new THREE.Object3D(), list = [];
-    for (let i = 0; i < 480; i++) {
-      const x = (r() - 0.5) * 240, z = -58 - r() * 12, sx = 0.8 + r() * 1.2, sy = 0.8 + r() * 1.5, sz = 0.8 + r();
-      if (Math.sin(x * 0.13) + Math.sin(x * 0.051 + 1) < -0.7) continue;  // gaps between the clumps
-      list.push([x, sy * 0.75, z, sx, sy, sz]);
+    for (let i = 0; i < 1100; i++) {  // many small crowns: a canopy with a broken top, not a row of boulders
+      const back = i >= 750, x = (r() - 0.5) * 240, z = back ? -72 - r() * 10 : -58 - r() * 12;
+      const sx = 0.8 + r() * 0.9, sy = 0.75 + r() * r() * 1.3, sz = 0.7 + r() * 0.6;  // round tropical crowns
+      if (!back && Math.sin(x * 0.13) + Math.sin(x * 0.051 + 1) < -1.5) continue;  // a few narrow breaks between the clumps
+      list.push([x, sy * 0.7, z, sx * (back ? 1.3 : 1), sy * (back ? 1.2 : 1), sz]);
     }
-    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 7, 5), new THREE.MeshBasicMaterial({ fog: false }), list.length);
+    const im = new THREE.InstancedMesh(new THREE.SphereGeometry(1, 12, 8), new THREE.ShaderMaterial({ uniforms: treeU, vertexShader: TREE_V, fragmentShader: TREE_F }), list.length);
     list.forEach(([x, y, z, sx, sy, sz], i) => { d.position.set(x, y, z); d.scale.set(sx, sy, sz); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
     scene.add(im);
     return im;
   })();
 
   // Farmer's hut on stilts, with a lantern
-  let hutWin;
+  let hutWin; const hutRim = { value: col(0, 0, 0) };
   {
     const hut = new THREE.Group(), wood = lambert(0x3a2618), thatch = lambert(0x5a3c1e, { flatShading: true });
     for (const [x, z] of [[-1, -0.8], [1, -0.8], [-1, 0.8], [1, 0.8]]) mesh(new THREE.BoxGeometry(0.12, 1.9, 0.12), wood, x, 0.95, z, hut);
     mesh(new THREE.BoxGeometry(2.3, 0.12, 1.9), wood, 0, 0.95, 0, hut);
     mesh(new THREE.BoxGeometry(2.1, 0.8, 0.06), wood, 0, 1.4, -0.8, hut);
-    hutWin = mesh(new THREE.PlaneGeometry(0.9, 0.42), new THREE.MeshBasicMaterial({ color: 0xffffff }), 0.15, 1.42, -0.76, hut);  // warm lamplight spilling on the back wall
+    // lamplight on the back wall: a small soft warm patch, not a lit panel
+    hutWin = mesh(new THREE.PlaneGeometry(0.62, 0.4), new THREE.MeshBasicMaterial({ color: 0xffffff, alphaMap: shadowTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), 0.2, 1.38, -0.76, hut);
+    thatch.onBeforeCompile = (sh) => {  // a warm rim where the low sun or the afterglow catches the roof edges
+      sh.uniforms.uHutRim = hutRim;
+      sh.fragmentShader = 'uniform vec3 uHutRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uHutRim * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 2.0);');
+    };
     const roof = mesh(new THREE.ConeGeometry(2.0, 1.1, 4), thatch, 0, 2.35, 0, hut); roof.rotation.y = Math.PI / 4; roof.scale.set(1.15, 1, 0.9);
+    mesh(new THREE.PlaneGeometry(3.6, 3.0).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, opacity: 0.55, depthWrite: false }), 0, 0.04, 0, hut);  // its shade on the ground
     hut.position.set(...HUT); hut.rotation.y = -0.5; scene.add(hut);
   }
 
@@ -575,16 +694,31 @@ function build(canvas, renderer, tier) {
   points(small ? 450 : Math.round(900 * tier.density ** 0.35), 4,  // dust: a full x10 reads as snow
     (r) => [(r() - 0.3) * 44, 0.15 + r() ** 2 * 1.5, 6 - r() * 36], DUST);  // low (below the ridges), thicker toward the sun
   const onFire = (r) => { const f = FIRES[Math.floor(r() * FIRES.length)], k = r(); return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; };
-  const flameN = small ? 700 : Math.round(1400 * tier.density ** 0.7);  // High 7,000: additive sprites, fill-bound
-  U.uFlameA.value = small ? 2.2 : 1 / Math.sqrt(flameN / 1400);
+  // the fronts: one standing ribbon per fire line carries the fire; the sprite flames add licks and sparks over it
+  const fronts = (() => {
+    const pos = [], f4 = [], idx = [], HM = 1.5, M = 40;
+    FIRES.forEach(([x0, z0, x1, z1], j) => {
+      const L = Math.hypot(x1 - x0, z1 - z0), o = pos.length / 3;
+      for (let i = 0; i <= M; i++) {
+        const k = i / M, x = x0 + (x1 - x0) * k, z = z0 + (z1 - z0) * k, y = groundH(x, z) + 0.1;  // above the coarse ground mesh: no straight cut
+        pos.push(x, y, z, x, y + HM, z); f4.push(k * L, 0, L, j / 5 + 0.13, k * L, 1, L, j / 5 + 0.13);
+        if (i < M) idx.push(o + 2 * i, o + 2 * i + 2, o + 2 * i + 1, o + 2 * i + 1, o + 2 * i + 2, o + 2 * i + 3);
+      }
+    });
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aF', new THREE.Float32BufferAttribute(f4, 4)); g.setIndex(idx);
+    const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: U, vertexShader: FRONT_V, fragmentShader: FRONT_F, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+    m.renderOrder = 1; scene.add(m); return m;
+  })();
+  const flameN = small ? 260 : Math.round(500 * tier.density ** 0.7);  // High 2,500 over the ribbons: additive sprites, fill-bound
+  U.uFlameA.value = small ? 1.1 : 0.6 / Math.sqrt(flameN / 1400); U.uFlameS.value = small ? 1.5 : 0.8;
   const flames = points(flameN, 5, (r) => { const p = onFire(r); p[1] = groundH(p[0], p[2]); return p; }, FLAME, FLAME_F);
-  const embers = points(small ? 350 : Math.round(700 * Math.sqrt(tier.density)), 6, onFire, EMBER);  // x density reads as glitter
+  const embers = points(small ? 120 : Math.round(500 * Math.sqrt(tier.density)), 6, onFire, EMBER);  // x density reads as glitter
   flames.renderOrder = embers.renderOrder = 1;        // drawn after the smoke, so they glow through it
-  const COLS = (() => { const r = rng(13); return FIRES.flatMap((f) => [0.3, 0.75].map((k) => { k += (r() - 0.5) * 0.2; return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; })); })();
-  // ten columns; fewer, bigger puffs than x density (overdraw), each thinner the more there are
-  const smokeN = small ? 260 : tier.name === 'ultra' ? 1200 : 420;  // fill-bound (big blended sprites into a 4x MSAA target): High is held at 420
+  const COLS = (() => { const r = rng(13); return FIRES.map((f) => { const k = 0.5 + (r() - 0.5) * 0.3; return [f[0] + (f[2] - f[0]) * k, 0, f[1] + (f[3] - f[1]) * k]; }); })();
+  // five tall plumes, one per front; fewer, bigger puffs than x density (overdraw), each thinner the more there are
+  const smokeN = small ? 360 : tier.name === 'ultra' ? 1200 : 420;  // fill-bound (big blended sprites into a 4x MSAA target): High is held at 420
   U.uSmokeA.value = small ? 0.95 : 0.75 * Math.min(1, Math.sqrt(360 / smokeN));  // phones: fewer, clearer columns
-  const smoke = points(smokeN, 7, (r) => { const c = COLS[Math.floor(r() * COLS.length)]; return [c[0] + (r() - 0.5) * 0.8, 0, c[2] + (r() - 0.5) * 0.8]; }, SMOKE, SMOKE_F, THREE.NormalBlending);
+  const smoke = points(smokeN, 7, (r) => { const c = COLS[Math.floor(r() * COLS.length)]; return [c[0] + (r() - 0.5) * 1.6, 0, c[2] + (r() - 0.5) * 0.4]; }, SMOKE, SMOKE_F, THREE.NormalBlending);  // the foot sits on the fire line
 
   // Straw fibres: scattered on the field (rng(1)), swirl up, fold into the box, bowl and cup
   const fibreN = small ? 1500 : Math.round(3000 * tier.density ** 0.25);  // High 5,300; Ultra 7,000: few enough that single straws read
@@ -592,7 +726,7 @@ function build(canvas, renderer, tier) {
   fibres.renderOrder = 1;                             // after the packaging, so its surface hides only the fibres behind it
   {
     const r = rng(1), cnt = fibres.geometry.attributes.position.count, s = new Float32Array(cnt * 3);
-    for (let i = 0; i < cnt; i++) { const x = C[0] - 3.2 + (r() + r() + r() - 1.5) * 2.6, z = C[2] + 2.6 + (r() + r() + r() - 1.5) * 2.4; s.set([x, groundH(x, z) + 0.05, z], i * 3); }  // a soft patch where the ribbon leaves the stubble
+    for (let i = 0; i < cnt; i++) { const x = C[0] - 2.4 + (r() + r() + r() - 1.5) * 2.0, z = C[2] + 2.0 + (r() + r() + r() - 1.5) * 1.8; s.set([x, groundH(x, z) + 0.05, z], i * 3); }  // a soft patch where the ribbon leaves the stubble
     fibres.geometry.setAttribute('aStart', new THREE.BufferAttribute(s, 3));
   }
 
@@ -605,11 +739,6 @@ function build(canvas, renderer, tier) {
   mesh(lathe(bowlR, 0.4), pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true, side: THREE.DoubleSide }), U.uRim), 0, 0, 0, pack[1]);
   mesh(new THREE.CylinderGeometry(0.32, 0.21, 0.75, 24).translate(0, 0.375, 0), paper, 0, 0, 0, pack[2]);
   mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 24), paper, 0, 0.78, 0, pack[2]);
-  const shadowTex = (() => {  // a soft round shadow (alpha map)
-    const N = 64, a = new Uint8Array(N * N * 4);
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, k = Math.max(0, 1 - (u * u + v * v)); a.fill(Math.round(255 * k * k), (y * N + x) * 4, (y * N + x) * 4 + 4); }
-    const t = new THREE.DataTexture(a, N, N); t.needsUpdate = true; return t;
-  })();
   const shadows = pack.map((g, i) => {
     const m = mesh(new THREE.PlaneGeometry(...[[1.6, 1.25], [1.0, 1.0], [0.65, 0.65]][i]).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, depthWrite: false }), 0, -OBJ[i].at[1] + 0.03, 0, g);
     return m.material;
@@ -620,11 +749,12 @@ function build(canvas, renderer, tier) {
 
   // City: dark blocks with lit windows, rising on the horizon
   const city = new THREE.Group(); scene.add(city);
-  const cityPts = points(small ? 2500 : n(3000), 10, (() => {
+  const cityPts = points(small ? 9000 : n(3000), 10, (() => {
     const r = rng(11), blds = [], d = new THREE.Object3D();
     for (let i = 0; i < 160; i++) { const tower = r() < 0.1; blds.push([(r() - 0.5) * 220, -112 - r() * 60, tower ? 3 + r() : 3 + r() * 5, tower ? 3 + r() : 3 + r() * 4, tower ? 11 + r() * 7 : 3 + r() ** 2 * 11]); }
     for (let i = 0; i < 50; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (30 + r() * 75), -75 - r() * 35, 3 + r() * 4, 3 + r() * 3, 2 + r() * 5]); }  // nearer, lower, off the avenue and clear of the frame edge
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: 0x0b1222 }), blds.length);  // scene fog: farther blocks are hazier
+    for (let i = 0; i < 24; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (3 + r() * 24), -92 - r() * 28, 3 + r() * 3, 3 + r() * 2, 4 + r() * 6]); }  // mid blocks behind the table: a phone's narrow view sees lit windows, not an empty avenue
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: 0x05060c }), blds.length);  // near-black silhouettes; scene fog: farther blocks are hazier
     blds.forEach(([x, z, w, dd, h], i) => { d.position.set(x, 0, z); d.scale.set(w, h, dd); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
     city.add(im);
     const signs = blds.filter((b, i) => b[4] > 7 && i % 9 === 0), SIGN = [[2.2, 1.1, 0.4], [2.2, 0.4, 0.25], [0.5, 1.7, 1.5], [2, 1.6, 1.1]];  // rooftop signs
@@ -633,7 +763,7 @@ function build(canvas, renderer, tier) {
     city.add(sm);
     // windows by height (tall blocks get more), snapped to a floor and column grid; about one floor in five is dark
     return (rr) => {
-      let b; do b = blds[Math.floor(rr() * blds.length)]; while (rr() * 15 > b[4]);
+      let b; do b = blds[Math.floor(rr() * blds.length)]; while (rr() * 15 > b[4] + 4);  // tall blocks get more, the low near ones still read lit
       const [x, z, w, dd, h] = b, cols = Math.max(2, Math.floor(w / 0.8)), floors = Math.max(1, Math.floor((h - 1) / 0.9));
       let f, c, n = 0;
       do { f = Math.floor(rr() * floors); c = Math.floor(rr() * cols); } while ((f * 7 + Math.abs(Math.round(x * 3))) % 5 === 0 && ++n < 8);
@@ -641,7 +771,7 @@ function build(canvas, renderer, tier) {
     };
   })(), CITY, CITY_F);
   scene.remove(cityPts); city.add(cityPts);
-  const bokeh = points(small ? 100 : Math.round(250 * Math.sqrt(tier.density)), 14,
+  const bokeh = points(small ? 220 : Math.round(250 * Math.sqrt(tier.density)), 14,
     (r) => [(r() - 0.5) * 170, 0.2 + r() * 1.3, -52 - r() * 70], BOKEH);  // street level only
   scene.remove(bokeh); city.add(bokeh);
 
@@ -649,7 +779,7 @@ function build(canvas, renderer, tier) {
   const cafe = new THREE.Group(); scene.add(cafe);
   // dark teak with a soft sheen from the bulb above (standard material: a warm highlight, not a flat disc)
   const wood = pattern(new THREE.MeshStandardMaterial({ color: 0x3a2a20, emissive: 0x120a06, roughness: 0.5, metalness: 0, transparent: true }),
-    'diffuseColor.rgb *= 0.84 + 0.24 * (0.5 + 0.5 * sin(vTP.x * 38.0 + sin(vTP.z * 3.0) * 2.0));');  // wood grain
+    'diffuseColor.rgb *= 0.97 + 0.03 * sin(vTP.x * 110.0 + sin(vTP.z * 5.0) * 3.0);');  // fine, faint wood grain (no broad stripes)
   const deck = pattern(new THREE.MeshStandardMaterial({ color: 0x8a5a42, roughness: 0.62, metalness: 0, transparent: true }),  // terracotta tiles
     'vec2 tp = vTP.xz / 0.6, fq = fract(tp); float gr = 1.0 - smoothstep(0.0, 0.04, min(min(fq.x, 1.0 - fq.x), min(fq.y, 1.0 - fq.y)));' +
     'diffuseColor.rgb *= (0.8 + 0.3 * fract(sin(dot(floor(tp), vec2(12.9898, 78.233))) * 43758.5453)) * (1.0 - 0.55 * gr);');
@@ -658,7 +788,7 @@ function build(canvas, renderer, tier) {
   mesh(new THREE.BoxGeometry(14, 0.06, 9), deck, 0, 0.03, TABLE[2], cafe);  // the terrace ends at the railing; the city lies below
   for (let x = -7; x <= 7; x += 1) mesh(new THREE.BoxGeometry(0.05, 1.0, 0.05), rail, x, 0.5, TABLE[2] - 4.3, cafe);
   for (const y of [0.5, 1.0]) mesh(new THREE.BoxGeometry(14, y === 1 ? 0.06 : 0.025, 0.07), rail, 0, y, TABLE[2] - 4.3, cafe);
-  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16), jar, TABLE[0] - 0.72, TABLE[1] + 0.05, TABLE[2] - 0.55, cafe);  // the candle
+  mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16), jar, CANDLE[0], CANDLE[1] + 0.05, CANDLE[2], cafe);  // the candle
   mesh(new THREE.CylinderGeometry(1.25, 1.23, 0.07, 96), wood, TABLE[0], 0.88, TABLE[2], cafe);
   mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.85, 12), wood, TABLE[0], 0.45, TABLE[2], cafe);
   mesh(new THREE.CylinderGeometry(0.45, 0.5, 0.05, 32), wood, TABLE[0], 0.06, TABLE[2], cafe);
@@ -675,7 +805,7 @@ function build(canvas, renderer, tier) {
   // Glows: the hut lantern and the café bulbs (aSeed.x picks which, aSeed.y is size)
   {
     const pos = [HUT[0] - 0.2, 1.6, HUT[2] + 0.3, HUT[0] - 0.2, 1.6, HUT[2] + 0.3, C[0], 0.7, C[2] - 0.7], sd = [0.2, 1.4, 0, 1, 0.2, 5.5, 1, 1, 0.8, 6, 0, 1], cl = [1, 0.62, 0.25, 0.5, 0.28, 0.1, 0.45, 0.3, 0.14];
-    pos.push(TABLE[0] - 0.72, TABLE[1] + 0.14, TABLE[2] - 0.55, TABLE[0] - 0.72, TABLE[1] + 0.14, TABLE[2] - 0.55); sd.push(0.5, 0.05, 3, 0, 0.5, 0.7, 5, 1); cl.push(1, 0.7, 0.35, 0.5, 0.26, 0.1);  // candle flame and its halo
+    pos.push(CANDLE[0], CANDLE[1] + 0.14, CANDLE[2], CANDLE[0], CANDLE[1] + 0.14, CANDLE[2]); sd.push(0.5, 0.05, 3, 0, 0.5, 0.7, 5, 1); cl.push(1, 0.7, 0.35, 0.5, 0.26, 0.1);  // candle flame and its halo
     for (let i = 0; i < 14; i++) { const k = i / 13; pos.push(-3.6 + 7.2 * k, 2.85 - Math.sin(k * Math.PI) * 0.35, TABLE[2] - 2.5 + 3 * k); sd.push(0.5, 0.34, i, 0); cl.push(1, 0.62, 0.3); }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.Float32BufferAttribute(sd, 4)); g.setAttribute('aCol', new THREE.Float32BufferAttribute(cl, 3));
@@ -688,10 +818,10 @@ function build(canvas, renderer, tier) {
   const sun = new THREE.DirectionalLight(0xffffff, 1); scene.add(sun);
   const fill = new THREE.DirectionalLight(0x8090c0, 0.25); fill.position.set(0, 10, 30); scene.add(fill);
   const fireLight = new THREE.PointLight(0xff6a20, 0, 30, 1); fireLight.position.set(0, 1.2, -18); scene.add(fireLight);
-  const packLight = new THREE.PointLight(0xffc27a, 0, 9, 1); packLight.position.set(C[0] - 1, 2.6, C[2] + 2.5); scene.add(packLight);
+  const packLight = new THREE.PointLight(0xffc27a, 0, 9, 1); packLight.position.set(C[0] + 2.2, 2.2, C[2] - 3);  // from the horizon side, like the afterglow on the field scene.add(packLight);
   const cafeLight = new THREE.PointLight(0xffb060, 0, 12, 1); cafeLight.position.set(0, 2.8, TABLE[2]); scene.add(cafeLight);
   // a warm pool on the table from the bulb overhead; it falls off to the deck
-  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4); candle.position.set(TABLE[0] - 0.72, TABLE[1] + 0.2, TABLE[2] - 0.55); scene.add(candle);
+  const candle = new THREE.PointLight(0xffa04a, 0, 4, 1.4); candle.position.set(CANDLE[0], CANDLE[1] + 0.2, CANDLE[2]); scene.add(candle);
   const tableSpot = new THREE.SpotLight(0xffd2a4, 0, 7, 0.7, 1, 1); tableSpot.position.set(0.3, 2.8, TABLE[2] + 0.2);
   tableSpot.target.position.set(TABLE[0], TABLE[1], TABLE[2]); scene.add(tableSpot, tableSpot.target);
 
@@ -700,8 +830,8 @@ function build(canvas, renderer, tier) {
   // smoke a golden/blue hour: a strong warm horizon glow under blue; then night.
   const H_WARM = col(1, 0.55, 0.22), H_RED = col(1, 0.36, 0.12), H_DUSK = col(0.8, 0.46, 0.28), H_NIGHT = col(0.09, 0.11, 0.19);
   const CORAL = col(0.95, 0.55, 0.32), MID_WARM = col(0.72, 0.42, 0.4), coral = col(0, 0, 0), mid = col(0, 0, 0), tc = col(0, 0, 0);
-  const TREE_DARK = col(0.06, 0.06, 0.04), Z_WARM = col(0.42, 0.3, 0.38), SMOKE_CEIL = col(0.33, 0.29, 0.27), SMOKE_HZ = col(0.42, 0.37, 0.33), AFTER = col(1, 0.48, 0.2);
-  const Z_DUSK = col(0.16, 0.18, 0.3), Z_NIGHT = col(0.03, 0.05, 0.11), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.4, 0.35, 0.33), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.4, 0.5, 0.8), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
+  const TREE_DARK = col(0.06, 0.05, 0.045), Z_WARM = col(0.3, 0.2, 0.3), SMOKE_CEIL = col(0.2, 0.175, 0.16), SMOKE_HZ = col(0.42, 0.37, 0.33), AFTER = col(1, 0.48, 0.2);
+  const Z_DUSK = col(0.2, 0.2, 0.31), Z_NIGHT = col(0.035, 0.04, 0.12), CITY_FOG = col(0.07, 0.065, 0.13), CLOUD = col(0.2, 0.13, 0.17), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.4, 0.35, 0.33), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.42, 0.45, 0.78), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
   const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3(), sv = new THREE.Vector3(), fwd = new THREE.Vector3();
 
   function render(p, t) {
@@ -711,7 +841,7 @@ function build(canvas, renderer, tier) {
     sky.position.copy(camera.position);
 
     const red = smooth(0.95, 0.78, P.sun) * sunW, glow = (1 - sunW) * smooth(0.42, 0.55, q) * (1 - smooth(0.68, 0.9, q));  // afterglow once the smoke clears
-    horizon.lerpColors(H_DUSK, H_WARM, sunW).lerp(H_RED, 0.55 * red).lerp(H_NIGHT, night).lerp(SMOKE_HZ, P.smoke * 0.7).lerp(CITYGLOW, P.city * 0.12);
+    horizon.lerpColors(H_DUSK, H_WARM, sunW).lerp(H_RED, 0.55 * red).lerp(H_NIGHT, night).lerp(SMOKE_HZ, P.smoke * 0.7).lerp(CITYGLOW, P.city * 0.06);
     zenith.lerpColors(Z_DUSK, Z_WARM, sunW * sunW).lerp(Z_NIGHT, night).lerp(SMOKE_CEIL, P.smoke * 0.85);  // the smoke closes the sky
     coral.lerpColors(H_DUSK, CORAL, sunW).lerp(H_RED, 0.4 * red).lerp(H_NIGHT, night).lerp(SMOKE_HZ, P.smoke * 0.7);
     mid.lerpColors(zenith, MID_WARM, sunW * (1 - P.smoke * 0.8));
@@ -719,50 +849,56 @@ function build(canvas, renderer, tier) {
     // Low behind the hut (its azimuth), just above the ridges at the hero, setting into them by p 0.35; blooms while sun > 0.2.
     sunDir.set(0.38, -0.04 + 0.2 * P.sun ** 2.5, -1).normalize();
     skyU.uSunDir.value.copy(sunDir); skyU.uSunAmt.value = sunW * (1 - P.smoke * 0.85); U.uSunDirW.value.copy(sunDir);
-    skyU.uDisc.value = 4 * smooth(0.2, 0.3, P.sun) * (1 - P.smoke * 0.9);
+    skyU.uDisc.value = 3.4 * smooth(0.2, 0.3, P.sun) * (1 - P.smoke * 0.9);
+    skyU.uCloud.value = (1 - smooth(0.25, 0.34, q)) * (1 - P.smoke); skyU.uCloudCol.value.copy(CLOUD).lerp(zenith, 0.3); skyU.uCityGlow.value = 0.6 * P.city;
     skyU.uSunCol.value.setRGB(1, 0.62, 0.3).lerp(H_RED, 0.5 * red);
-    scene.fog.color.copy(horizon).lerp(Z_NIGHT, 0.35).lerp(CITYGLOW, 0.4 * P.city); scene.fog.far = 90 + 50 * smooth(0.6, 0.8, q);  // thicker haze over the field
+    scene.fog.color.copy(horizon).lerp(Z_NIGHT, 0.35).lerp(CITY_FOG, 0.85 * P.city);  // night over the city is blue-violet, not smog
+    scene.fog.far = (90 + 50 * smooth(0.6, 0.8, q)) * (1 - 0.35 * P.smoke) + 160 * P.city;  // thicker haze in the smoke; the city stays crisp
     // aerial perspective: each farther ridge paler and bluer, all melting into the haze at their base and catching the
     // sun on their crests; they sink away before the city (Bangkok is flat)
     ridges.forEach((m, i) => {
       const u = m.material.uniforms;
-      u.uCol.value.copy(horizon).lerp(Z_NIGHT, 0.5 - 0.13 * i).lerp(zenith, 0.1 * i);
+      u.uCol.value.copy(horizon).lerp(Z_NIGHT, 0.5 - 0.13 * i).lerp(zenith, 0.1 * i).lerp(scene.fog.color, 0.9 * P.smoke);  // lost in the smoke
       u.uHaze.value.copy(scene.fog.color); u.uSunDir.value.copy(sunDir);
       u.uSunCol.value.copy(skyU.uSunCol.value).multiplyScalar(sunW * (1 - P.smoke) + 0.4 * glow);
       m.position.y = -45 * smooth(0.74, 0.95, q);
     });
-    trees.position.y = -14 * smooth(0.72, 0.86, q); trees.material.color.copy(scene.fog.color).lerp(TREE_DARK, 0.4); U.uDrop.value = smooth(0.72, 0.85, q);
+    trees.position.y = -14 * smooth(0.72, 0.86, q); U.uDrop.value = smooth(0.72, 0.85, q);
+    treeU.uHaze.value.copy(scene.fog.color); treeU.uDark.value.copy(scene.fog.color).lerp(TREE_DARK, 0.82); treeU.uSunDir.value.copy(sunDir);
+    treeU.uSunCol.value.copy(skyU.uSunCol.value).multiplyScalar(sunW * (1 - P.smoke) + 0.5 * glow); treeU.uSmoke.value = 0.85 * P.smoke;
 
-    hemi.color.copy(horizon).lerp(zenith, 0.35).lerp(MOON, 0.35 * (1 - sunW)); hemi.intensity = 0.85 + 0.35 * sunW + 0.25 * glow;  // shadows never go to mud
+    const cool = smooth(0.42, 0.56, q) * (1 - sunW) * (1 - P.city);  // the clearing air after the smoke: blue-violet shade, warm only on the tips
+    hemi.color.copy(horizon).lerp(zenith, 0.35).lerp(MOON, 0.35 * (1 - sunW) + 0.3 * cool); hemi.intensity = 0.85 + 0.35 * sunW + 0.15 * glow + 0.25 * cool;  // shadows never go to mud
     sun.position.copy(sunDir).multiplyScalar(50); sun.color.copy(H_WARM).lerp(H_RED, 0.5 * red).lerp(AFTER, glow);
-    sun.intensity = 1.4 * sunW + 1.0 * glow;  // the afterglow keeps raking the stubble tips after sunset
+    sun.intensity = 1.4 * sunW + 0.9 * glow;  // the afterglow keeps raking the stubble tips after sunset
     fill.color.lerpColors(MOON, WARM_FILL, sunW); fill.intensity = 0.55 * sunW + 0.7 * (1 - sunW);
-    fireLight.intensity = 6 * P.fire; cafeLight.intensity = 2.2 * P.city; tableSpot.intensity = 2.5 * P.city; candle.intensity = 3 * P.city;
+    fireLight.intensity = 2 * P.fire; cafeLight.intensity = 2.2 * P.city; tableSpot.intensity = 2.5 * P.city; candle.intensity = 1.6 * P.city;
     bladeU.uSunDir.value.copy(sunDir); bladeU.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity / Math.PI);
-    bladeU.uAmb.value.copy(hemi.color).multiplyScalar(hemi.intensity / Math.PI).add(tc.copy(fill.color).multiplyScalar(fill.intensity * 0.3 / Math.PI));
+    bladeU.uAmb.value.copy(hemi.color).multiplyScalar(hemi.intensity * (1 + 0.5 * cool) / Math.PI).add(tc.copy(fill.color).multiplyScalar(fill.intensity * 0.3 / Math.PI));
     bladeU.uFireAmt.value = 0.9 * P.fire; U.uCityGround.value = smooth(0.6, 0.8, q);
-    bladeU.uChar.value = smooth(0.24, 0.34, q) * (1 - smooth(0.5, 0.6, q));
+    bladeU.uChar.value = smooth(0.24, 0.34, q) * (1 - smooth(0.5, 0.6, q)); bladeU.uCool.value = cool; bladeU.uRows.value = 0.4 * sunW + 0.25 * glow;
 
     U.uT.value = t;
     U.uDust.value = (1 - smooth(0.45, 0.6, q)) * (1 - 0.6 * P.smoke);
     U.uFire.value = P.fire; U.uS.value = Math.max(P.smoke, 0.5 * P.fire); U.uEmber.value = Math.max(P.fire, 0.5 * P.smoke);
     U.uClear.value = P.clear; U.uHot.value = post ? 2.5 : 1;  // HDR only where bloom and ACES can take it
-    U.uSmokeHigh.value.copy(SMOKE_DARK).multiplyScalar(0.75).lerp(horizon, 0.3); U.uSmokeLow.value.lerpColors(SMOKE_DARK, SMOKE_LIT, 0.5 * P.fire).multiplyScalar(0.8);
+    U.uSmokeHigh.value.copy(SMOKE_DARK).multiplyScalar(0.6).lerp(zenith, 0.35);  // the ceiling: heavy grey-brown U.uSmokeLow.value.lerpColors(SMOKE_DARK, SMOKE_LIT, 0.55 * P.fire);
     U.uSmokeFire.value.copy(SMOKE_LIT).multiplyScalar(2.6 * P.fire);  // the flames light the column bases
     U.uFibCol.value.setRGB(1, 0.68, 0.3).multiplyScalar(post ? 1.05 : 1);  // just at the bloom edge: dense stretches glow, no blow-out
     U.uFold.value = P.fold; U.uFibA.value = smooth(0.42, 0.52, q) * (small ? 1 : Math.min(1, 0.75 * (fibreN / 3000) ** -0.2)); U.uSurf.value = smooth(0.85, 1, P.fold); U.uFibOut.value = smooth(0.72, 0.77, q);
     U.uLantern.value = (0.5 + 0.5 * (1 - sunW)) * (1 - smooth(0.6, 0.75, q));
-    hutWin.material.color.setRGB(2.2, 1.3, 0.55).multiplyScalar(U.uLantern.value);  // after uLantern: nothing may read the last frame
+    hutWin.material.color.setRGB(1.1, 0.5, 0.16).multiplyScalar(U.uLantern.value * (0.3 + 0.7 * (1 - sunW)));  // after uLantern: nothing may read the last frame; faint by day
+    hutRim.value.copy(sun.color).multiplyScalar(0.35 * sunW * (1 - P.smoke) + 0.25 * glow);
     U.uBulbs.value = P.city; U.uCity.value = P.city;
     U.uStars.value = Math.max(0.35 * smooth(0.45, 0.65, q) * P.clear, P.city);  // first stars at dusk, all of them as the city rises
-    flames.visible = embers.visible = P.fire > 0.001 || P.smoke > 0.001;
+    flames.visible = embers.visible = P.fire > 0.001 || P.smoke > 0.001; fronts.visible = P.fire > 0.001;
     smoke.visible = U.uS.value > 0.001; fibres.visible = U.uFibA.value > 0.001 && U.uFibOut.value < 1;
 
     const form = smooth(0.8, 1, P.fold);
     // halo trimmed to half: it sat behind the caption text
-    U.uHalo.value = 0.35 * form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = (2.5 * smooth(0.1, 0.6, P.fold) + 2.5 * form) * (1 - P.city);
-    bladeU.uPack.value = form * (1 - P.fly) * 1.2; bladeU.uPackPos.value.set(C[0], 0.4, C[2] + 0.1);
-    U.uRim.value.setRGB(1, 0.68, 0.38).multiplyScalar(0.45 * form * (1 - 0.7 * P.city));
+    U.uHalo.value = 0.35 * form * (1 - smooth(0.72, 0.8, q)); packLight.intensity = (1.5 * smooth(0.1, 0.6, P.fold) + 1.2 * form) * (1 - P.city);
+    bladeU.uPack.value = form * (1 - P.fly) * 0.6; bladeU.uPackPos.value.set(C[0], 0.4, C[2] + 0.1);
+    U.uRim.value.setRGB(1, 0.6, 0.3).multiplyScalar(0.6 * form * (1 - 0.8 * P.city));  // the afterglow behind them rims the pulp
     packMats.forEach((m) => { m.opacity = U.uSurf.value; });  // the pulp surface fills in over the settled outline
     pack.forEach((g, i) => {
       const o = OBJ[i], e = clamp01((P.fly - i * 0.08) / 0.84) ** 2.2;  // slow start keeps them just ahead of the camera
@@ -772,10 +908,10 @@ function build(canvas, renderer, tier) {
       U.uFA.value[i].set(...o.at); U.uFM.value[i].set(...m); U.uFE.value[i].copy(end); U.uFP.value.setComponent(i, e);
       g.position.set(b(0), b(1) + 0.05 * Math.sin(t * 1.2 + i * 2) * (1 - e) * (1 - form), b(2));  // a slight bob only while forming; then it rests
       g.rotation.set(Math.sin(e * Math.PI) * 0.5, o.rot + (1 - e) * (i % 2 ? -6.28 : 6.28), 0);
-      g.scale.setScalar(1 - 0.38 * e);
+      g.scale.setScalar(FOLD_S + (0.62 - FOLD_S) * e);  // 0.62 on the table, as before
       g.visible = form > 0.001;
       bladeU.uObj.value[i].set(g.position.x, g.position.y, g.position.z, form * (1 - smooth(0, 0.15, e)));  // contact shadow while it rests
-      shadows[i].opacity = 0.6 * U.uSurf.value * (1 - smooth(0, 0.1, e));
+      shadows[i].opacity = 0.85 * U.uSurf.value * (1 - smooth(0, 0.1, e));
     });
     trails.visible = P.fly > 0 && P.fly < 1;
     city.visible = P.city > 0.001; city.position.y = -12 - ((1 - P.city) ** 2) * 16;  // below the terrace: it falls away past the railing
@@ -787,7 +923,7 @@ function build(canvas, renderer, tier) {
     sv.copy(sunDir).multiplyScalar(50).add(camera.position).project(camera);
     post.render({
       sunScreen: [sv.x * 0.5 + 0.5, sv.y * 0.5 + 0.5], sun: P.sun, smoke: Math.max(P.smoke, 0.6 * P.fire),  // the grade goes grey-sepia with the fire
-      glow: Math.max(P.fire, P.city, form), facing: smooth(0, 0.3, camera.getWorldDirection(fwd).dot(sunDir)),
+      glow: Math.max(P.fire, P.city, form), fire: P.fire, facing: smooth(0, 0.3, camera.getWorldDirection(fwd).dot(sunDir)),
     });
   }
 

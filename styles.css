@@ -35,7 +35,8 @@
   --dusk-rule: oklch(34% 0.03 262); --dusk-field: oklch(29% 0.045 70); --dusk-field-muted: oklch(80% 0.03 85);
   --dusk-accent: oklch(72% 0.15 50); --dusk-accent-hover: oklch(78% 0.13 55); --dusk-focus: oklch(74% 0.17 50);
   --dusk-error: oklch(72% 0.16 27); --dusk-shade: oklch(10% 0.03 262 / 0.6);
-  --film-shadow: 0 1px 2px oklch(12% 0.03 262 / 0.7), 0 0 28px oklch(12% 0.03 262 / 0.75);
+  /* film type: a tight, soft, warm-dark shadow hugging the letters (layers stack under each stroke), no slab behind */
+  --film-shadow: 0 0 1px oklch(13% 0.03 30 / 0.95), 0 1px 3px oklch(13% 0.03 30 / 0.85), 0 0 8px oklch(13% 0.03 30 / 0.6), 0 0 20px oklch(13% 0.03 30 / 0.4);
   --film-scrim: oklch(14% 0.03 262 / 0.85);
   --film-text-scrim: oklch(12% 0.03 262 / 0.5);  /* film caption bands: lighter now that they end just past the text */
   /* Print: a certificate prints black on white paper */
@@ -380,6 +381,11 @@ body.home {
 html.no-film #film { display: none; }
 .home .site-footer { position: relative; }
 .page-head--home h1, .page-head--home .lead, .beat .caption, .doors h2 { text-shadow: var(--film-shadow); }
+/* the header over the film: a warm translucent dark (other pages keep the paper header) */
+html.film body.home .site-header { background: oklch(16% 0.03 35 / 0.8); border-bottom-color: oklch(45% 0.04 45 / 0.3); }
+html.film body.home .nav a { color: var(--color-ink-2); }
+html.film body.home .site-header :is(.wordmark, .nav a, .bag-btn) { text-shadow: 0 0 1px oklch(13% 0.03 30 / 0.9), 0 0 6px oklch(13% 0.03 30 / 0.7); }
+html.film body.home .bag-btn span { text-shadow: none; }
 /* Film text scrim: one soft dusk band per text block, from the left screen edge to just past the text, feathered on
    every side (no boxes), so the type holds 4.5:1 while the sky and sun right of it stay lit. --band-w is the text
    width; the band ends there and fades out over 14rem. The stills have their own gradient. */
@@ -400,13 +406,13 @@ html.film .page-head--home .wrap::before, html.film .beat .caption::before, html
   mask-image: var(--fade-x), var(--fade-y); mask-composite: intersect;
 }
 html.film .page-head--home { align-content: start; }  /* the headline over the upper sky; the sunset glows across below it */
-html.film .page-head--home .wrap { --band-a: 0.46; }
+html.film .page-head--home .wrap::before { content: none; }  /* the hero has no band: the sky behind the headline stays open; the shadow carries the type */
 html.film .btn-secondary { background: oklch(15% 0.035 25 / 0.55); }  /* ghost buttons get a shaded fill over the film (sun, windows) */
 @media (hover: hover) { html.film .btn-secondary:hover { background: var(--color-ink); } }
-.page-head--home .lead { color: var(--color-ink); }
+.page-head--home .lead { color: var(--color-ink); text-shadow: 0 0 2px oklch(13% 0.03 30 / 0.9), var(--film-shadow); }  /* the thinnest strokes on the film get one more tight layer */
 .skip-film {
   display: inline-flex; align-items: center; min-height: var(--tap); margin-top: var(--space-md);
-  color: var(--color-ink); font-weight: 600; font-size: var(--text-lg); text-shadow: var(--film-shadow);
+  color: var(--color-ink); font-weight: 600; font-size: var(--text-lg); text-shadow: 0 0 2px oklch(13% 0.03 30 / 0.9), var(--film-shadow);
 }
 
 .beat { position: relative; display: grid; align-items: end; min-height: 100svh; padding-block: var(--space-3xl); overflow: hidden; }
@@ -416,7 +422,7 @@ html.film .btn-secondary { background: oklch(15% 0.035 25 / 0.55); }  /* ghost b
 html.no-film .still { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 html.no-film .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, var(--film-scrim), transparent 65%); }
 .counter-block { margin-top: var(--space-xl); width: fit-content; max-width: 100%; }
-html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radius: var(--radius-card); background: oklch(14% 0.03 262 / 0.82); }  /* a solid panel: small text never sits on the film */
+html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radius: var(--radius-card); background: oklch(15% 0.035 30 / 0.4); text-shadow: var(--film-shadow); }  /* a light warm veil, not a dashboard panel: the small type keeps its shadow */
 .counters-label { margin: 0 0 var(--space-sm); color: var(--color-ink); font-size: 1.125rem; font-weight: 600; }
 .counters { display: grid; grid-template-columns: repeat(3, minmax(0, max-content)); gap: var(--space-md) var(--space-xl); margin: 0; }
 .counters dt { font-size: 1.125rem; font-weight: 600; color: var(--color-ink); }
@@ -425,7 +431,6 @@ html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radi
 .doors h2 { margin: 0; }
 @media (max-width: 40rem) {
   .page-head--home { align-content: start; }  /* the hero text up top; the sunset, sun and hut sit below it (film.js tall framing) */
-  html.film .page-head--home .wrap { --band-feather: 4.5rem; --band-a: 0.48; }
   .beat { padding-block: var(--space-2xl); }
   .counters { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
   .counters div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }

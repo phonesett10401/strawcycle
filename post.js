@@ -43,8 +43,9 @@ const GRADE = {
     vec4 c = texture2D(tDiffuse, vUv);
     float l = dot(c.rgb, vec3(0.3, 0.55, 0.15));
     c.rgb += vec3(0.022, 0.012, 0.004) * (1.0 - smoothstep(0.0, 0.5, l));          // warm lift
-    float keep = 1.0 - smoothstep(0.35, 1.2, l);                                  // flames and lit smoke keep their colour
-    c.rgb = mix(c.rgb, vec3(l) * vec3(1.08, 0.96, 0.8), 0.35 * uSmoke * keep);   // sepia: fire and smoke drain the colour
+    float mx = max(c.r, max(c.g, c.b)), sat = (mx - min(c.r, min(c.g, c.b))) / max(mx, 1e-4);
+    float keep = (1.0 - smoothstep(0.35, 1.2, l)) * (1.0 - smoothstep(0.6, 0.85, sat));  // flames, embers and lit smoke keep their colour
+    c.rgb = mix(c.rgb, vec3(l) * vec3(1.04, 0.98, 0.9), 0.6 * uSmoke * keep);    // fire and smoke drain the colour to grey
     c.rgb = mix(c.rgb, vec3(0.46, 0.4, 0.36), 0.22 * uSmoke * keep);              // haze
     gl_FragColor = c;
   }`,
@@ -75,6 +76,7 @@ export function createPost(THREE, renderer, scene, camera, tier) {
   return {
     render(u) {
       bloom.strength = bloomBase * (0.7 + 0.3 * u.glow);
+      bloom.radius = 0.55 - 0.4 * (u.fire ?? 0);                 // tight around the flames, so they keep their edges
       rays.uniforms.uSun.value = u.sunScreen;
       rays.uniforms.uAmt.value = 0.35 * u.sun * (u.facing ?? 1);
       grade.uniforms.uSmoke.value = u.smoke;
