@@ -790,11 +790,18 @@ function build(canvas, renderer, tier) {
 
   // The packaging itself, faded in as the fibres settle
   const paper = pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true }), U.uRim);
-  const lathe = (f, h, top) => new THREE.LatheGeometry(Array.from({ length: 11 }, (_, k) => new THREE.Vector2(f(h * k / 10), h * k / 10)).concat(top || []), 28);
+  // the profile starts with a flat floor (rings from the axis out to f(0)) raised 2.5 cm, so the bowl is solid from above and clear of the table top
+  const lathe = (f, h, floor) => new THREE.LatheGeometry(Array.from({ length: floor }, (_, k) => new THREE.Vector2(f(0) * k / floor, 0.025))
+    .concat(Array.from({ length: 11 }, (_, k) => new THREE.Vector2(f(h * k / 10), h * k / 10))), 28);
   const pack = OBJ.map(() => new THREE.Group());
   mesh(new THREE.BoxGeometry(1.1, 0.45, 0.8).translate(0, 0.225, 0), paper, 0, 0, 0, pack[0]);
   mesh(new THREE.BoxGeometry(1.14, 0.1, 0.84), paper, 0, 0.405, 0, pack[0]);  // the lid: a shallow overhang over the top
-  mesh(lathe(bowlR, 0.4), pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true, side: THREE.DoubleSide }), U.uRim), 0, 0, 0, pack[1]);
+  const bowlGeo = lathe(bowlR, 0.4, 4), bp = bowlGeo.attributes.position;
+  bowlGeo.setAttribute('color', new THREE.BufferAttribute(Float32Array.from({ length: bp.count * 3 }, (_, i) => {  // floor darkens softly toward the centre
+    const v = Math.floor(i / 3), r = Math.hypot(bp.getX(v), bp.getZ(v)) / bowlR(0);
+    return bp.getY(v) < 0.02 || bp.getY(v) > 0.03 ? 1 : 0.68 + 0.32 * Math.min(1, r) ** 1.5;
+  }), 3));
+  mesh(bowlGeo, pulp(lambert(0xe2cc98, { emissive: 0x24180a, transparent: true, side: THREE.DoubleSide, vertexColors: true }), U.uRim), 0, 0, 0, pack[1]);
   mesh(new THREE.CylinderGeometry(0.32, 0.21, 0.75, 24).translate(0, 0.375, 0), paper, 0, 0, 0, pack[2]);
   mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 24), paper, 0, 0.78, 0, pack[2]);
   const shadows = pack.map((g, i) => {
@@ -1113,6 +1120,7 @@ async function boot() {
   canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
   measure(); shown = target();
   if (VIDEO || BENCH) await postReady;  // fixed renders and the bench must include post
+  if (root.classList.contains('no-film')) return stop();  // the 4 s failsafe fired meanwhile (slow GPU): stills, never a film on a hidden 0x0 canvas
   document.fonts?.ready.then(measure);  // caption heights change when the web fonts arrive
   // scFilm.render(p, t) draws exactly that frame (scene and counters) and stops the scroll loop; open the page
   // with ?film=video for capture (see VIDEO above).
