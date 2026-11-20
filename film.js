@@ -2,7 +2,7 @@
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
 // Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
 import { params, rng, counter, shouldUse3D, tooSlow, through } from './timeline.js';
-import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, TRAIL, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP } from './shaders.js';
+import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, TRAIL, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP, FORM, FORM_MASK, FORM_BUMP } from './shaders.js';
 import { TIERS, pickTier, nextStep, parseFilmFlags } from './tiers.js';
 
 const root = document.documentElement;
@@ -64,11 +64,19 @@ const ROW = 0.3, HILL = 0.22;                         // harvest rows (along z) 
 const HUT = [9.5, 0, -16];                            // right of the hero text, the sun setting behind it
 const DECK = 0.06;                                    // the terrace floor: cafe.glb's origin sits on it
 const TABLE = [0, DECK + 0.75, -42];                  // the bistro table top, real size (0.70 m across)
-const CANDLE_AT = [-0.2, 0, -0.17];                   // the candle on the table, back left (cafe.glb models it at z 0.13)
+const CANDLE_AT = [-0.29, 0, -0.1];                   // the candle on the table, left of the box and clear of it (cafe.glb models it at -0.2, z 0.13)
 const CANDLE = [TABLE[0] + CANDLE_AT[0], TABLE[1], TABLE[2] + CANDLE_AT[2]];
-// the festoon (wire, bulbs) moved back to the railing, turned across the view and scaled up (big globe bulbs, a long
-// sag) so its ends leave the frame at the top: x, y, z (from the table on the deck), turn, scale
-const LIGHTS_AT = [0, -1.4, -3.4, 0.45, 1.7];
+// the festoon (wire, bulbs) back by the railing, straight across the view and spread wide so its ends leave the frame
+// at the sides, its sag flattened, the bulbs at real size: it hangs in the band between the header and the doors'
+// heading. x, y on wide screens, z (from the table on the deck), y on portrait screens, spread, flatten
+const LIGHTS_AT = [0, 1.32, -3.4, 1.85, 2.3, 0.3];
+// the festoon group's place (the model's wire runs at 0.45 rad in its own space); bulbs keep their own shape
+function festoon(g, x, y, z) {
+  g.position.set(x + LIGHTS_AT[0], y, z + LIGHTS_AT[2]);
+  g.rotation.y = 0.45;
+  g.scale.set(LIGHTS_AT[4], LIGHTS_AT[5], LIGHTS_AT[4]);
+  g.children.forEach((o) => { if (o.name.startsWith('bulb_')) o.scale.set(1 / LIGHTS_AT[4], 1 / LIGHTS_AT[5], 1 / LIGHTS_AT[4]); });
+}
 // The burn (FIRE in shaders.js has the same maths for the flames, char and glow). Fire lines run a to b: [ax, az, bx, bz].
 // FIRE_T per line, in burn units (burnAt: 0..1 over p 0.2-0.45, from p only): ignition start, the time the ignition
 // takes to run the line, 1 if it runs from b, and how fast the front then moves (m per unit). Each line runs right to
@@ -107,18 +115,27 @@ const OBJ = [
   { at: [-0.95, 1.0, -14], rot: 0.35, pose: [0, 0], table: [-0.08, 0.02, 0.15] },
   { at: [0.0, 1.0, -13.75], rot: 0, pose: [0, 0], table: [0.1, -0.13, 0] },
   { at: [0.8, 1.0, -14.05], rot: 0, pose: [0, 0], table: [0.23, -0.02, 0] },
-  { at: [-0.75, 0.55, -13.55], rot: 0, pose: [1.25, 0.55], table: [0, 0.2, 1.9] },
-  { at: [0.05, 0.53, -13.5], rot: 0, pose: [1.25, 0.55], table: [0.09, 0.21, 1.94] },
-  { at: [0.8, 0.57, -13.7], rot: 0, pose: [1.25, 0.55], table: [0.19, 0.12, -1.1] },
+  // the cutlery in a level row under them (a shallow arc), faces to the camera, handles toward the ribbon on the left
+  { at: [-0.9, 0.56, -13.55], rot: 0, pose: [1.4, -0.06], table: [0, 0.2, 1.9] },
+  { at: [0.05, 0.5, -13.5], rot: 0, pose: [1.4, 0], table: [0.09, 0.21, 1.94] },
+  { at: [0.85, 0.56, -13.7], rot: 0.45, pose: [1.4, 0.06], table: [0.19, 0.12, -1.1] },  // turned a little away, so it fits a phone's width
 ];
+// The forming beat (p 0.6 to 0.72): each piece takes in its straws at its own pace (flow at p 0.72), so the box nearest
+// the ribbon is still half weave while the bowl is nearly done and the cup and cutlery are finished; all are pressed by
+// p 0.76. HALF: half the piece's width in the field (FIELD_S), for its press front.
+const FLOW_AT = [0.68, 0.92, 1.08, 0.97, 0.97, 0.97], HALF = [0.42, 0.36, 0.24, 0.34, 0.34, 0.48];
 const PACK_NODES = ['box', 'bowl', 'cup', 'fork', 'spoon', 'chopsticks'];
 // the fibre ribbon's spine (FIBRE): an S rising from the stubble to over the forming spot, placed for wide screens and,
 // since key 3 pins the portrait p 0.6 camera, again inside the narrow portrait frame (the fibres land on the pieces either way)
 const SPINE_WIDE = [[-1.7, 0.05, -12.2], [0.9, 1.3, -12.5], [-1.2, 2.6, -13.5], [1.0, 3.6, -14.2], [0.2, 2.7, -14.1]];
 const SPINE_TALL = [[0.5, 0.05, -11.5], [3, 0.9, -12.3], [0.6, 2.2, -13.2], [3.5, 4, -14], [2.2, 3, -14]];
+// at p 0.72 the S rises from the far field left of the pieces, through the sky above the caption, and curls into the box's
+// left side (the cutlery's straws leave it halfway up); placed for each screen shape's camera
+const SPINE_FORM = [[-9.1, 0, -24.78], [-4.37, 1.16, -18.83], [-3.88, 1.76, -16.38], [-2.31, 1.84, -14.88], [-1.35, 1.49, -14.05]];
+const SPINE_FORM_TALL = [[-2.34, 0, -17.32], [-0.67, 0.74, -13.27], [-1.49, 1.2, -13.54], [-1.46, 2.27, -13.76], [-1.32, 1.44, -14]];
 const bowlR = (y) => 0.32 + 0.3 * Math.sqrt(y / 0.4);
 const cupR = (y) => 0.21 + 0.11 * y / 0.75;
-function sampleSurface(r) {                           // a point on the box, bowl or cup, in world space at fold time
+function sampleSurface(r) {                           // a point on the box, bowl or cup, in world space at fold time, and which piece
   const k = r(), o = k < 0.45 ? 0 : k < 0.75 ? 1 : 2, a = r() * Math.PI * 2;
   let p;
   if (o === 0) {                                      // box surface: pick a face by its area
@@ -132,7 +149,7 @@ function sampleSurface(r) {                           // a point on the box, bow
   } else if (o === 1) { const y = r() < 0.35 ? 0.4 : 0.4 * r() ** 0.7, rr = bowlR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
   else if (r() < 0.3) { const rr = r() < 0.6 ? 0.34 : Math.sqrt(r()) * 0.34; p = [Math.cos(a) * rr, 0.78, Math.sin(a) * rr]; }
   else { const y = 0.75 * r(), rr = cupR(y); p = [Math.cos(a) * rr, y, Math.sin(a) * rr]; }
-  return p.map((v, i) => v * FOLD_S + OBJ[o].at[i]);
+  return [...p.map((v, i) => v * FOLD_S + OBJ[o].at[i]), o];
 }
 
 const col = (r, g, b) => new THREE.Color(r, g, b);
@@ -209,11 +226,10 @@ function arrange(name, root) {
     const candle = new THREE.Group(), lights = new THREE.Group();
     candle.position.set(CANDLE_AT[0] + 0.2, 0, CANDLE_AT[2] - 0.13);
     candle.add(root.getObjectByName('candle'), root.getObjectByName('candle_flame'));
-    lights.position.set(LIGHTS_AT[0], LIGHTS_AT[1], LIGHTS_AT[2]);
-    lights.rotation.y = LIGHTS_AT[3];
-    lights.scale.setScalar(LIGHTS_AT[4]);
     root.children.filter((o) => /^(bulb_|string_)/.test(o.name)).forEach((o) => lights.add(o));
     lights.getObjectByName('string_posts').visible = false;
+    lights.name = 'festoon';
+    festoon(lights, 0, LIGHTS_AT[1], 0);
     root.add(candle, lights);
   }
   if (name === 'packaging') {
@@ -292,6 +308,7 @@ function build(canvas, renderer, tier) {
   const U = {
     uT: { value: 0 }, uScale: { value: 1 }, uPR: { value: 1 }, uDust: { value: 0 }, uFire: { value: 0 }, uEmber: { value: 0 },
     uClear: { value: 0 }, uHot: { value: 1 }, uTA: { value: 1 }, uTW: { value: 0.32 }, uTH: { value: 1.4 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uSurf: { value: 0 }, uSpine: { value: SPINE_WIDE.map((q) => new THREE.Vector3(...q)) }, uStartOff: { value: new THREE.Vector3() },
+    uFlow: { value: OBJ.map(() => 0) }, uSpan: { value: 1 }, uWid: { value: 1 }, uStartK: { value: 1 }, uBranch: { value: 0 }, uAbs: { value: 0 }, uStartRef: { value: new THREE.Vector3(SPINE_WIDE[0][0], 0, SPINE_WIDE[0][2]) },
     uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 }, uWin: { value: small ? 2.4 : 1 }, uLift: { value: 0 }, uLiftK: { value: 0 }, uLitF: { value: small ? 0.8 : 0.45 },
     uFA: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFM: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFE: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
     uFires: { value: FIRES.map((q) => new THREE.Vector4(...q)) }, uFireT: { value: FIRE_T.map((q) => new THREE.Vector4(...q)) }, uPiles: { value: PILES.map((q) => new THREE.Vector4(...q)) }, uPileT: { value: new THREE.Vector2(...PILE_T) }, uBurn: { value: 0 },
@@ -597,9 +614,11 @@ function build(canvas, renderer, tier) {
   // fibre is a thin strip of FIB_SEG segments traced back along its own path (FIBRE), so it is long, tapered and curved.
   const fibreN = small ? 1500 : Math.round(3000 * tier.density ** 0.25);  // High 5,300; Ultra 7,000: few enough that single straws read
   const FIB_SEG = 10, fibres = (() => {
-    const r = rng(8), end = new Float32Array(fibreN * 3), sd = new Float32Array(fibreN * 4), st = new Float32Array(fibreN * 3), strip = [], idx = [];
+    const r = rng(8), end = new Float32Array(fibreN * 3), sd = new Float32Array(fibreN * 4), st = new Float32Array(fibreN * 3), piece = new Float32Array(fibreN), strip = [], idx = [];
     for (let i = 0; i < fibreN; i++) {
-      end.set(sampleSurface(r), i * 3);
+      const e = sampleSurface(r);
+      end.set(e.slice(0, 3), i * 3);
+      piece[i] = e[3];
       sd.set([r(), r(), r(), r()], i * 4);
     }
     // a soft patch where the ribbon leaves the stubble, front left
@@ -616,6 +635,7 @@ function build(canvas, renderer, tier) {
     g.setAttribute('aEnd', new THREE.InstancedBufferAttribute(end, 3));
     g.setAttribute('aSeed', new THREE.InstancedBufferAttribute(sd, 4));
     g.setAttribute('aStart', new THREE.InstancedBufferAttribute(st, 3));
+    g.setAttribute('aPiece', new THREE.InstancedBufferAttribute(piece, 1));
     g.instanceCount = fibreN;
     const m = new THREE.Mesh(g, new THREE.ShaderMaterial({ uniforms: U, vertexShader: FIBRE, fragmentShader: FIBRE_F, transparent: true, depthWrite: false, side: THREE.DoubleSide }));
     m.frustumCulled = false;                          // placed in the shader
@@ -650,19 +670,57 @@ function build(canvas, renderer, tier) {
   // fibre targets jump; packModel turns true once it is in
   let packSwap = null, packModel = false, drawn = false;
 
-  // City: dark blocks with lit windows, rising on the horizon
+  // City: three layers of dark blocks (near, mid, far, each hazier and bluer), a few tall towers with lit crowns, lit
+  // windows, haze and warm street glow between the layers; it rises on the horizon
   const city = new THREE.Group(); scene.add(city);
   const cityPts = points(small ? 9000 : n(3000), 10, (() => {
     const r = rng(11), blds = [], d = new THREE.Object3D();
-    for (let i = 0; i < 160; i++) { const tower = r() < 0.1; blds.push([(r() - 0.5) * 220, -112 - r() * 60, tower ? 3 + r() : 3 + r() * 5, tower ? 3 + r() : 3 + r() * 4, tower ? 11 + r() * 7 : 3 + r() ** 2 * 11]); }
+    // [x, z, width, depth, height, layer 0 near / 1 mid / 2 far / 3 tower]
+    for (let i = 0; i < 160; i++) {
+      const tower = r() < 0.1, z = -112 - r() * 60;
+      blds.push([(r() - 0.5) * 220, z, tower ? 3 + r() : 3 + r() * 5, tower ? 3 + r() : 3 + r() * 4, tower ? 11 + r() * 7 : 3 + r() ** 2 * 11, z < -140 ? 2 : 1]);
+    }
     // nearer, lower, off the avenue and clear of the frame edge
-    for (let i = 0; i < 50; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (30 + r() * 75), -75 - r() * 35, 3 + r() * 4, 3 + r() * 3, 2 + r() * 5]); }
+    for (let i = 0; i < 50; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (30 + r() * 75), -75 - r() * 35, 3 + r() * 4, 3 + r() * 3, 2 + r() * 5, 0]); }
     // mid blocks behind the table: a phone's narrow view sees lit windows, not an empty avenue
-    for (let i = 0; i < 24; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (3 + r() * 24), -92 - r() * 28, 3 + r() * 3, 3 + r() * 2, 4 + r() * 6]); }
-    // near-black silhouettes; scene fog: farther blocks are hazier
-    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial({ color: 0x05060c }), blds.length);
-    blds.forEach(([x, z, w, dd, h], i) => { d.position.set(x, 0, z); d.scale.set(w, h, dd); d.updateMatrix(); im.setMatrixAt(i, d.matrix); });
+    for (let i = 0; i < 24; i++) { const s = r() < 0.5 ? -1 : 1; blds.push([s * (3 + r() * 24), -92 - r() * 28, 3 + r() * 3, 3 + r() * 2, 4 + r() * 6, 1]); }
+    // six slender towers well above the skyline, right of the doors' text and at the far left (screen), crowns lit
+    for (const [x, z, h] of [[36, -128, 20], [55, -146, 23.5], [70, -134, 19], [86, -156, 22], [-72, -138, 20.5], [-98, -158, 23]]) blds.push([x, z, 3.5 + r() * 1.5, 3.5 + r() * 1.5, h, 3]);
+    const LAYER = [col(0.016, 0.02, 0.04), col(0.04, 0.045, 0.075), col(0.075, 0.08, 0.125), col(0.03, 0.035, 0.062)];
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial(), blds.length);
+    blds.forEach(([x, z, w, dd, h, l], i) => {
+      d.position.set(x, 0, z);
+      d.scale.set(w, h, dd);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
+      im.setColorAt(i, LAYER[l]);
+    });
     city.add(im);
+    // the towers' crowns: a lit band under the roof and a short mast
+    const towers = blds.filter((b) => b[5] === 3), crown = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), new THREE.MeshBasicMaterial(), towers.length * 2);
+    towers.forEach(([x, z, w, dd, h], i) => {
+      d.position.set(x, h - 1.1, z);
+      d.scale.set(w * 1.02, 0.35, dd * 1.02);
+      d.updateMatrix();
+      crown.setMatrixAt(2 * i, d.matrix);
+      crown.setColorAt(2 * i, i % 2 ? col(1.0, 0.68, 0.38) : col(0.95, 0.82, 0.62));
+      d.position.set(x, h, z);
+      d.scale.set(0.25, 2.5 + (i % 3), 0.25);
+      d.updateMatrix();
+      crown.setMatrixAt(2 * i + 1, d.matrix);
+      crown.setColorAt(2 * i + 1, col(0.9, 0.5, 0.3));
+    });
+    city.add(crown);
+    // haze between the layers, warm with street light at the bottom, thinning upward (drawn over the windows behind it)
+    [[-111, 0.55, 12], [-139, 0.65, 16]].forEach(([z, a, h]) => {
+      const hz = mesh(new THREE.PlaneGeometry(320, h).translate(0, h / 2, 0), new THREE.ShaderMaterial({
+        uniforms: { uCity: U.uCity, uA: { value: a }, uWarm: { value: col(0.62, 0.32, 0.14) }, uHaze: { value: col(0.12, 0.11, 0.2) } },
+        vertexShader: 'varying float vV;\nvoid main() {\n  vV = uv.y;\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n}',
+        fragmentShader: 'uniform float uCity, uA;\nuniform vec3 uWarm, uHaze;\nvarying float vV;\nvoid main() {\n  gl_FragColor = vec4(mix(uWarm, uHaze, smoothstep(0.0, 0.45, vV)), uA * uCity * pow(clamp(1.0 - vV, 0.0, 1.0), 1.8));\n  #include <tonemapping_fragment>\n}',
+        transparent: true, depthWrite: false,
+      }), 0, 0, z, city);
+      hz.renderOrder = 2;
+    });
     // warm, not neon  // rooftop signs
     const signs = blds.filter((b, i) => b[4] > 7 && i % 9 === 0), SIGN = [[1.4, 0.75, 0.3], [1.2, 0.5, 0.25], [1.1, 0.9, 0.6], [1.3, 1.0, 0.7]];
     const sm = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial(), signs.length);
@@ -673,7 +731,7 @@ function build(canvas, renderer, tier) {
       // tall blocks get more, the low near ones still read lit
       let b;
       do b = blds[Math.floor(rr() * blds.length)];
-      while (rr() * 15 > b[4] + 4);
+      while (rr() * 15 > b[4] + 4 || (b[5] < 3 && rr() < 0.25));
       const [x, z, w, dd, h] = b, cols = Math.max(2, Math.floor(w / 0.8)), floors = Math.max(1, Math.floor((h - 1) / 0.9));
       let f, c, n = 0;
       do { f = Math.floor(rr() * floors); c = Math.floor(rr() * cols); } while ((f * 7 + Math.abs(Math.round(x * 3))) % 5 === 0 && ++n < 8);
@@ -713,9 +771,7 @@ function build(canvas, renderer, tier) {
   }
   // the festoon: v1's catenary (the shape of cafe.glb's wire, in its space) until the model brings its own
   const lights = new THREE.Group();
-  lights.position.set(TABLE[0] + LIGHTS_AT[0], DECK + LIGHTS_AT[1], TABLE[2] + LIGHTS_AT[2]);
-  lights.rotation.y = LIGHTS_AT[3];
-  lights.scale.setScalar(LIGHTS_AT[4]);
+  festoon(lights, TABLE[0], DECK + LIGHTS_AT[1], TABLE[2]);
   cafe.add(lights);
   lights.updateMatrixWorld();
   const catenary = (k) => new THREE.Vector3(-1.8 + 3.4 * k, 2.36 - Math.sin(k * Math.PI) * 0.3, -1.2 + 1.65 * k);
@@ -757,9 +813,12 @@ function build(canvas, renderer, tier) {
   const lineLight = new THREE.PointLight(0xff6a20, 0, 10, 1.6);
   scene.add(lineLight);
   // warm key from the sun side; the cool fill comes from the sky
-  const packLight = new THREE.PointLight(0xffb070, 0, 9, 1);
-  packLight.position.set(C[0] + 1.6, 2.2, C[2] + 2.2);
+  const packLight = new THREE.PointLight(0xffa860, 0, 9, 1);
+  packLight.position.set(C[0] - 1.2, 3.2, C[2] + 2.6);
   scene.add(packLight);
+  // after the fire (p > 0.5) the piles' light is free: it becomes the rim from behind and above, the pulp's top edges
+  // against the dusk sky in the field and the city glow at the café (one light less for every material to shade)
+  const FIRE_COL = col(1, 0.416, 0.125), RIM_COL = col(1, 0.66, 0.38);
   // a warm overhead pool; the floor falls into darkness beyond it
   const cafeLight = new THREE.PointLight(0xffb060, 0, 6, 2);
   cafeLight.position.set(0, 2.8, TABLE[2]);
@@ -770,8 +829,18 @@ function build(canvas, renderer, tier) {
   scene.add(candle);
   // the table only, not the floor by the lens
   const tableSpot = new THREE.SpotLight(0xffd2a4, 0, 7, 0.42, 1, 1);
-  tableSpot.position.set(0.3, 2.8, TABLE[2] + 0.2);
-  tableSpot.target.position.set(TABLE[0], TABLE[1], TABLE[2]); scene.add(tableSpot, tableSpot.target);
+  tableSpot.position.set(-0.2, 2.8, TABLE[2] + 0.3);
+  tableSpot.target.position.set(TABLE[0], TABLE[1], TABLE[2]);
+  scene.add(tableSpot, tableSpot.target);
+  // soft contact shadows under each piece on the table, darkening as it lands: footprint [x, z] at real size
+  const FOOT = [[0.26, 0.21], [0.21, 0.21], [0.13, 0.13], [0.19, 0.05], [0.19, 0.06], [0.26, 0.05]];
+  const contact = FOOT.map(([fx, fz], i) => {
+    const m = mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a0503, alphaMap: shadowTex, transparent: true, depthWrite: false }), TABLE[0] + OBJ[i].table[0], TABLE[1] + 0.002, TABLE[2] + OBJ[i].table[1]);
+    m.rotation.y = OBJ[i].table[2];
+    m.scale.set(fx * 1.5, 1, fz * 1.5);
+    m.renderOrder = -1;
+    return m;
+  });
 
   // Colours of the evening
   // sunset: amber-apricot horizon under dusty rose, deepening to orange-red as the sun touches the ridges; after the
@@ -790,16 +859,28 @@ function build(canvas, renderer, tier) {
   scene.add(farmer);
   // emissive parts the film drives each frame: [material, kind, base]
   const emit = [];
-  const pulpRim = (sh) => {
-    sh.uniforms.uRim = U.uRim;
-    sh.fragmentShader = 'uniform vec3 uRim;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uRim * pow(1.0 - abs(dot(normal, normalize(vViewPosition))), 3.0);');
+  // packaging.glb as it forms (FORM in shaders.js): each piece has its own press front (uForm, toward uWipeD from uWipeC)
+  // with the weave beyond it (uLat), and once pressed the pulp's dimples, uneven roughness and the afterglow rim (U.uRim)
+  const formU = OBJ.map(() => ({ uRim: U.uRim, uForm: { value: 0 }, uLat: { value: 0 }, uWipeC: { value: new THREE.Vector3() }, uWipeD: { value: new THREE.Vector3() } }));
+  const pieceMats = OBJ.map(() => []);
+  const pulpForm = (u) => (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = 'varying vec3 vFormW, vFormO;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvFormO = position;\nvFormW = (modelMatrix * vec4(position, 1.0)).xyz;');
+    sh.fragmentShader = FORM + sh.fragmentShader
+      .replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\n' + FORM_MASK)
+      .replace('#include <color_fragment>', '#include <color_fragment>\ndiffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.78, 0.55, 0.26), fib);\ndiffuseColor.a *= mix(1.0, uLat, fib);')
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(roughnessFactor * (0.8 + 0.45 * hgt), 0.35, 1.0);')
+      .replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + FORM_BUMP)
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += uRim * pow(max(1.0 - abs(dot(normal, normalize(vViewPosition))), 0.0), 3.0) * (1.0 - fib) + vec3(0.32, 0.19, 0.07) * fib;');
   };
   const fade = (list, m) => {
     m.transparent = true;
     m.userData.op ??= m.opacity;
     if (!list.includes(m)) list.push(m);
   };
+  let models = null;
   function attachModels(M) {
+    models = M;
     if (M.hut) {
       hutV1.forEach((m) => { m.visible = false; });
       hut.add(M.hut);
@@ -829,8 +910,8 @@ function build(canvas, renderer, tier) {
       scene.updateMatrixWorld();
       glowPos.setXYZ(3, ...M.cafe.getObjectByName('candle_flame').localToWorld(v.set(-0.2, 0.8, 0.13)).toArray());
       glowPos.setXYZ(4, v.x, v.y, v.z);
-      for (let i = 0; i < 14; i++) glowPos.setXYZ(5 + i, ...M.cafe.getObjectByName('bulb_' + String(i).padStart(2, '0')).localToWorld(v.set(0, -0.09, 0)).toArray());
       glowPos.needsUpdate = true;
+      festY = null;
     }
     if (M.packaging) packSwap = () => swapPack(M);
   }
@@ -839,15 +920,21 @@ function build(canvas, renderer, tier) {
       inner[i].children.forEach((m) => { m.visible = false; });
       inner[i].add(node);
     });
-    inner.forEach((g) => g.traverse((o) => {
+    inner.forEach((g, i) => g.traverse((o) => {
       if (!o.material || !o.visible) return;
-      fade(packMats, o.material);
-      if (tier.name === 'low') o.material.sheen = 0;
-      // v1's warm lift and afterglow rim on the pulp (U.uRim)
-      if (o.material.name === 'straw_inner') return;
-      o.material.emissive.setHex(0x24180a);
-      o.material.onBeforeCompile = pulpRim;
-      o.material.customProgramCacheKey = () => 'pulpRim';
+      // its own copy per piece, so each piece keeps its own press front
+      const m = o.material = o.material.clone();
+      fade(pieceMats[i], m);
+      if (tier.name === 'low') m.sheen = 0;
+      // the pressed-fibre normal map at full strength (once: a tier rebuild clones these again)
+      if (m.normalScale && !m.userData.bumped) {
+        m.normalScale.multiplyScalar(1.3);
+        m.userData.bumped = true;
+      }
+      // v1's warm lift on the pulp
+      if (m.name !== 'straw_inner') m.emissive.setHex(0x24180a);
+      m.onBeforeCompile = pulpForm(formU[i]);
+      m.customProgramCacheKey = () => 'pulpForm';
     }));
     // fibre targets on the models' surfaces, posed as they fold (FIELD_S, in the air, before any lift)
     pack.forEach((g, i) => {
@@ -858,26 +945,47 @@ function build(canvas, renderer, tier) {
     });
     scene.updateMatrixWorld();
     const r = rng(8), parts = [], w = [];
-    inner.forEach((g) => g.traverse((o) => {
+    inner.forEach((g, gi) => g.traverse((o) => {
       if (!o.isMesh || !o.visible) return;
       const s = new M.Sampler(o).setRandomGenerator(r).build();
-      parts.push([o, s]);
+      parts.push([o, s, gi]);
       w.push(s.distribution[s.distribution.length - 1]);
     }));
-    const pos = fibres.geometry.attributes.aEnd, total = w.reduce((a, b) => a + b, 0);
+    const pos = fibres.geometry.attributes.aEnd, pc = fibres.geometry.attributes.aPiece, total = w.reduce((a, b) => a + b, 0);
     for (let i = 0; i < pos.count; i++) {
       let k = r() * total, j = 0;
       while (j < w.length - 1 && k > w[j]) k -= w[j++];
       parts[j][1].sample(v);
+      // the cutlery takes its straws in at the handle (the model's -x half), where they trail in from the ribbon
+      for (let n = 0; n < 8 && parts[j][2] > 2 && v.x > -0.02; n++) parts[j][1].sample(v);
       v.applyMatrix4(parts[j][0].matrixWorld);
       pos.setXYZ(i, v.x, v.y, v.z);
+      pc.setX(i, parts[j][2]);
     }
     pos.needsUpdate = true;
+    pc.needsUpdate = true;
     packModel = true;
+  }
+
+  // the festoon hangs higher on portrait screens (above the doors' heading there too); its bulb glows follow it
+  let festY = null;
+  function placeFestoon(tall) {
+    const y = tall ? LIGHTS_AT[3] : LIGHTS_AT[1], fm = models?.cafe?.getObjectByName('festoon');
+    if (y === festY) return;
+    festY = y;
+    lights.position.y = DECK + y;
+    lights.updateMatrixWorld();
+    if (fm) {
+      fm.position.y = y;
+      fm.updateMatrixWorld();
+    }
+    for (let i = 0; i < 14; i++) glowPos.setXYZ(5 + i, ...(fm ? fm.getObjectByName('bulb_' + String(i).padStart(2, '0')).localToWorld(v.set(0, -0.09, 0)) : lights.localToWorld(catenary(i / 13).setY(catenary(i / 13).y - 0.09))).toArray());
+    glowPos.needsUpdate = true;
   }
 
   function render(p, t) {
     const q = clamp01(p), P = params(q, t, camera.aspect < 1), sunW = smooth(0.45, 1, P.sun), night = smooth(0.6, 0.95, q);
+    placeFestoon(camera.aspect < 1);
     const flick = 0.85 + 0.15 * Math.sin(t * 11.3) * Math.sin(t * 4.7 + 1.3);  // candle flicker
     if (packSwap && (!drawn || P.fold < 0.05)) {
       packSwap();
@@ -950,6 +1058,10 @@ function build(canvas, renderer, tier) {
     const B = burnAt(q), fireOn = P.fire > 0.001;
     U.uBurn.value = B;
     fireLight.intensity = 7 * P.fire * Math.max(pileAmt(0, B), pileAmt(1, B));
+    fireLight.color.copy(FIRE_COL);
+    fireLight.position.set(0.9, 3.6, -17.2);
+    fireLight.distance = 18;
+    fireLight.decay = 1.5;
     // the torch and his own line light him warmly from the front-left, so he reads against the smoke behind
     const tf = frontAt(FARMER, 0.04 + 0.3 * B, B);
     lineLight.position.set(tf[0] + 0.6, 1.6, tf[1] + 1.2);
@@ -972,8 +1084,8 @@ function build(canvas, renderer, tier) {
     bladeU.uPileK.value = 1 - smooth(0.5, 0.7, q);
     pileRim.value.copy(sun.color).multiplyScalar(0.8 * sunW * (1 - P.smoke));
     cafeLight.intensity = 5 * P.city;
-    tableSpot.intensity = 0.3 * P.city;
-    candle.intensity = 0.08 * P.city * flick;
+    tableSpot.intensity = 0.45 * P.city;
+    candle.intensity = 0.3 * P.city * flick;  // its warm bounce on the box beside it
     bladeU.uSunDir.value.copy(sunDir);
     bladeU.uSunCol.value.copy(sun.color).multiplyScalar(sun.intensity / Math.PI);
     // no lavender: the blade shader cools only the shade
@@ -1008,9 +1120,18 @@ function build(canvas, renderer, tier) {
     U.uSmokeFire.value.copy(SMOKE_LIT).multiplyScalar(1.5 * P.fire);  // the flames light the column bases (more bleaches the smoke to steam)
     U.uFibCol.value.setRGB(1, 0.68, 0.3).multiplyScalar(post ? 0.72 : 1);  // under the bloom edge: the long strands stay gold, not cream
     U.uFold.value = P.fold;
-    const spine = camera.aspect < 1 ? SPINE_TALL : SPINE_WIDE;
-    U.uSpine.value.forEach((q, i) => q.set(...spine[i]));
-    U.uStartOff.value.set(spine[0][0] - SPINE_WIDE[0][0], 0, spine[0][2] - SPINE_WIDE[0][2]);
+    // the forming beat (p 0.6-0.72): the S moves to curl into the box, the straws grow longer and wrap their pieces, the
+    // cutlery's leave it halfway up, and each piece takes its straws at its own pace (FLOW_AT), all pressed by p 0.76
+    const fm = smooth(0.6, 0.7, q), sp0 = camera.aspect < 1 ? SPINE_TALL : SPINE_WIDE, sp1 = camera.aspect < 1 ? SPINE_FORM_TALL : SPINE_FORM;
+    U.uSpine.value.forEach((s3, i) => s3.set(...sp0[i]).lerp(v.set(...sp1[i]), fm));
+    U.uStartOff.value.set(U.uSpine.value[0].x - SPINE_WIDE[0][0], 0, U.uSpine.value[0].z - SPINE_WIDE[0][2]);
+    U.uSpan.value = 1 + 1.6 * fm;
+    U.uWid.value = 1 - 0.4 * fm;
+    U.uStartK.value = 1 - 0.7 * fm;
+    U.uBranch.value = fm;
+    U.uAbs.value = smooth(0.6, 0.66, q);
+    const fA = smooth(0.6, 0.72, q), fB = smooth(0.72, 0.76, q);
+    OBJ.forEach((o, i) => { U.uFlow.value[i] = P.fold + fA * (FLOW_AT[i] - 1) + fB * (1.35 - FLOW_AT[i]); });
     U.uFibA.value = smooth(0.42, 0.52, q) * (small ? 1 : Math.min(1, 0.75 * (fibreN / 3000) ** -0.2));
     U.uSurf.value = smooth(0.85, 1, P.fold);
     U.uFibOut.value = smooth(0.72, 0.77, q);
@@ -1031,8 +1152,17 @@ function build(canvas, renderer, tier) {
     U.uLift.value = lift;
     U.uLiftK.value = liftK;
     // halo trimmed to half: it sat behind the caption text
-    U.uHalo.value = 0.35 * form * (1 - smooth(0.72, 0.8, q));
-    packLight.intensity = (1.2 * smooth(0.1, 0.6, P.fold) + 2.2 * form) * (1 - P.city);
+    U.uHalo.value = 0.35 * form * (1 - smooth(0.7, 0.73, q));  // gone before the camera reaches the pieces
+    packLight.intensity = (1.2 * smooth(0.1, 0.6, P.fold) + 3.6 * form) * (1 - P.city);
+    // the rim: behind the pieces as they form, then behind the table (the railing side) as they land
+    if (q > 0.55) {
+      fireLight.color.copy(RIM_COL);
+      fireLight.distance = 6;
+      fireLight.decay = 1.2;
+      if (P.city > 0.5) fireLight.position.set(TABLE[0] + 0.25, TABLE[1] + 0.7, TABLE[2] - 0.9);
+      else fireLight.position.set(C[0], 2.6, C[2] - 2.4);
+      fireLight.intensity = P.city > 0.5 ? 1.4 * P.city : 6 * smooth(0.6, 0.7, q) * (1 - P.fly);
+    }
     bladeU.uPack.value = form * (1 - P.fly) * 0.6;
     bladeU.uPackPos.value.set(C[0], 0.4, C[2] + 0.1);
     U.uRim.value.setRGB(1, 0.6, 0.3).multiplyScalar(0.6 * form * (1 - 0.8 * P.city));  // the afterglow behind them rims the pulp
@@ -1050,6 +1180,18 @@ function build(canvas, renderer, tier) {
       g.scale.setScalar(s0 + (s1 - s0) * e);
       inner[i].quaternion.slerpQuaternions(packModel ? qAir[i] : qFlat, qFlat, e);
       g.visible = form > 0.001 && (packModel || i < 3);
+      if (packModel) {
+        // pressed from the far side toward where its straws come in (the spine's end; the cutlery's branch, halfway up)
+        const fl = U.uFlow.value[i], formK = clamp01((fl - 0.45) / 0.45), latK = smooth(0.5, 0.62, fl), fu = formU[i];
+        fu.uForm.value = formK >= 1 ? 2 : formK;
+        fu.uLat.value = latK;
+        fu.uWipeC.value.set(g.position.x, g.position.y + 0.03 * g.scale.x, g.position.z);
+        fu.uWipeD.value.copy(U.uSpine.value[i < 3 ? 4 : 2]).sub(fu.uWipeC.value).setY(0).normalize().multiplyScalar(FIELD_S / (HALF[i] * g.scale.x));
+        pieceMats[i].forEach((m) => { m.opacity = (m.userData.op ?? 1) * Math.min(1, 8 * Math.max(formK, latK)); });
+        g.visible = formK + latK > 0.001;
+      }
+      contact[i].material.opacity = 0.7 * smooth(0.85, 1, e);
+      contact[i].visible = g.visible && e > 0.85;
       if (i > 2) return;
       U.uFA.value[i].set(...o.at);
       U.uFM.value[i].set(...m);
@@ -1146,7 +1288,10 @@ async function boot() {
   // says so for the capture harness.
   const attachModels = () => {
     const stall = setTimeout(() => { root.dataset.filmModels = 'stalled'; }, 20000);
-    return loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e)).finally(() => clearTimeout(stall));
+    return loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e)).finally(() => {
+      clearTimeout(stall);
+      delete root.dataset.filmModels;  // a late arrival is not a stall
+    });
   };
   const modelsReady = (VIDEO || BENCH) ? attachModels() : new Promise((r) => requestAnimationFrame(() => r(attachModels())));
 

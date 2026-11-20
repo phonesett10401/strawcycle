@@ -26,17 +26,17 @@ const KEYS = [
   [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
   [1.2, 3.66, -3.5, 4.36, 2.39, -15.7],  // above the field, smoke gone, straw lifting; turned right so the hut sits whole in the frame at p 0.6
-  [-0.43, 0.78, -12.32, -1.11, 0.86, -14.55], // (re-solved with key 2 so p 0.72 is unchanged) low in the stubble, the packaging floating just above chest height, up and right of the caption
-  [0, 1.06, -41.3, 0, 0.88, -42.8],   // low and close: the small table fills the lower half, the city and the festoon above
+  [-0.43, 0.78, -12.31, -1.11, 0.86, -14.54], // (re-solved with keys 2 and 4 so p 0.72 is unchanged) low in the stubble, the packaging floating just above chest height, up and right of the caption
+  [0, 1.1, -41.15, 0, 0.86, -42.65],  // seated, pulled back: the whole table setting (candle and cutlery too) in the lower half, the city and the festoon above
 ];
 // Portrait screens see a narrow slice: the hut turned into the right third, the packaging and the whole café table
 // pulled back so they fit, the table low in the frame under the doors.
 const KEYS_TALL = [
-  [2.31, 1.43, 5.88, 6.82, 4.94, -22.19], // close on the hut (a third of the width) with the big sun over the hills; horizon at 57%
-  [2.55, 2.59, 4.11, 10.56, 0.60, -27.14], // pulled back: the farmer, the piles and the hut in one narrow frame
-  [0.92, 3.06, -1.22, 4.28, 0.46, -19.03],
-  [-0.05, 0.93, -10.79, -0.31, 0.52, -12.58], // low, the floating pieces in the upper half above the caption (solved with key 2 for p 0.72)
-  [0.00, 1.08, -41.05, 0.00, 0.99, -42.55], // close on the table (lower half), the lit skyline in the band between the buttons and the railing
+  [2.30, 1.43, 5.84, 6.82, 4.90, -22.19], // close on the hut (a third of the width) with the big sun over the hills; horizon at 57%
+  [2.56, 2.59, 4.17, 10.55, 0.68, -27.14], // pulled back: the farmer, the piles and the hut in one narrow frame
+  [0.88, 3.05, -1.39, 4.30, 0.24, -19.03],
+  [0.04, 0.96, -10.29, -0.37, 1.12, -12.58], // low, the pieces across the middle third with the ribbon on their left (keys 0-3 solved together, p 0.05-0.6 kept)
+  [-0.02, 1.22, -40.7, -0.02, 0.86, -42.6], // pulled back over the table (lower half): candle to cup in the width, the lit skyline between the buttons and the railing
 ];
 
 function catmull(a, b, c, d, u) {
@@ -58,8 +58,10 @@ export function params(p, t, tall = false) {
   const smoke = smooth(0.3, 0.37, q) * (1 - smooth(0.37, 0.5, q));
   const cam = cameraAt(q, tall ? KEYS_TALL : KEYS);
   const flicker = 1 - 0.05 * (0.5 + 0.5 * Math.sin(t * 9)); // idle: small, keeps fire in 0..1
+  // the idle sway settles at the café: its look point is close, so a sway there tilts the whole frame (one framing for every visit)
+  const sway = 0.05 * (1 - 0.85 * smooth(0.75, 1, q));
   return {
-    camera: { ...cam, x: cam.x + 0.05 * Math.sin(t * 0.6), y: cam.y + 0.05 * Math.sin(t * 0.45 + 1) },
+    camera: { ...cam, x: cam.x + sway * Math.sin(t * 0.6), y: cam.y + sway * Math.sin(t * 0.45 + 1) },
     sun: 1 - q,
     fire: fire * flicker,
     smoke,

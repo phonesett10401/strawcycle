@@ -428,8 +428,14 @@ html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radi
 .doors h2 { margin: 0; }
 @media (max-width: 40rem) {
   .beat { padding-block: var(--space-2xl); }
-  .counters { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); }
-  .counters div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-md); }
+  /* one compact row on phones, so the forming packaging keeps the middle of the screen */
+  .counter-block { margin-top: var(--space-md); }
+  html.film .counter-block { padding: var(--space-sm) var(--space-md); }
+  .counters-label { font-size: var(--text-md); }
+  .counters { grid-template-columns: repeat(3, auto); gap: var(--space-2xs) var(--space-md); }
+  .counters div { display: flex; flex-direction: column-reverse; justify-content: flex-end; }
+  .counters dt { font-size: var(--text-sm); line-height: 1.25; }
+  .counters dd { font-size: var(--text-lg); }
 }
 
 /* Impact and Help: facts list, three-step money flow, numbers list, FAQ */

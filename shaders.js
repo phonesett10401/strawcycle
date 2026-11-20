@@ -38,7 +38,9 @@ float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
 // The ignition line wobbles; once lit, a spot's front moves back (away from the camera, -n) with its age, curving as
 // it goes, and leaves char behind. Piles (uPiles: x, z, radius, height) catch at uPileT.
 export const FIRE = /* glsl */`
-uniform vec4 uFires[5], uFireT[5], uPiles[2]; uniform vec2 uPileT; uniform float uBurn;
+uniform vec4 uFires[5], uFireT[5], uPiles[2];
+uniform vec2 uPileT;
+uniform float uBurn;
 float gH(vec2 p) { return (0.1 * sin(p.x * 0.9) * cos(p.y * 0.7) + 0.05 * sin(p.x * 2.3 + p.y * 1.7)) * smoothstep(-36.0, -31.0, p.y); }
 float fWob(float j, float s) { return 0.6 * sin(s * 0.55 + j * 1.7) + 0.3 * sin(s * 1.37 + j * 4.3) + 0.12 * sin(s * 3.1 + j * 2.0); }
 float fAge(int j, float u) {
@@ -50,7 +52,8 @@ float fOff(int j, float s, float L, float age) {
   return fWob(float(j), s) - uFireT[j].w * max(age, 0.0) * (0.45 + 0.55 * endk) * (1.0 + 0.3 * sin(s * 0.8 + float(j) * 2.3));
 }
 vec2 fPoint(int j, float u, out float age, out float amt) {
-  vec2 a = uFires[j].xy, ab = uFires[j].zw - a; float L = length(ab), s = u * L;
+  vec2 a = uFires[j].xy, ab = uFires[j].zw - a;
+  float L = length(ab), s = u * L;
   age = fAge(j, u);
   amt = smoothstep(0.0, 0.03, age) * (0.35 + 0.65 * smoothstep(0.0, 1.2, min(s, L - s)));
   return a + ab * u + vec2(-ab.y, ab.x) / L * fOff(j, s, L, age);
@@ -64,10 +67,15 @@ float pAmt(int i) {
 // Flame tongues: camera-facing cards (upright) standing on the fronts and piles. aT: line 0-4 or pile 5-6, u along
 // the line (or angle on the pile), size, seed. Height flickers on t; each card's shape is drawn in TONGUE_F.
 export const TONGUE_V = /* glsl */`
-uniform float uT, uFire, uTW, uTH; attribute vec4 aT; varying vec2 vUv; varying float vS, vA, vK;
+uniform float uT, uFire, uTW, uTH;
+attribute vec4 aT;
+varying vec2 vUv;
+varying float vS, vA, vK;
 ${FIRE}
 void main() {
-  int j = int(aT.x + 0.5); float age = 0.0, amt, H, W; vec3 b;
+  int j = int(aT.x + 0.5);
+  float age = 0.0, amt, H, W;
+  vec3 b;
   vK = step(4.5, aT.x);
   if (j < 5) {
     vec2 xz = fPoint(j, aT.y, age, amt);
@@ -76,7 +84,9 @@ void main() {
     H = uTH * env * (0.3 + 0.7 * aT.z * aT.z) * (1.0 - 0.3 * smoothstep(0.3, 1.2, age));  // many small tongues, a few tall
     W = uTW * (0.7 + 0.6 * aT.w);
   } else {
-    int i = j - 5; vec4 P = uPiles[i]; float r = sqrt(fract(aT.w * 7.31)) * 0.8, an = aT.y * 6.2832;
+    int i = j - 5;
+    vec4 P = uPiles[i];
+    float r = sqrt(fract(aT.w * 7.31)) * 0.8, an = aT.y * 6.2832;
     amt = pAmt(i);
     b = vec3(P.x + cos(an) * r * P.z, gH(P.xy) + P.w * sqrt(max(1.0 - r * r, 0.0)) * 0.85, P.y + sin(an) * r * P.z);
     H = uTH * (0.7 + 1.0 * aT.z * aT.z) * (1.2 - 0.5 * r);  // taller over the pile's crown
@@ -90,16 +100,18 @@ void main() {
   vUv = vec2(position.x + 0.5, position.y);
   vS = aT.w * 17.0 + aT.z * 5.0;
   vA = amt * min(uFire * 2.0, 1.0) * step(0.001, H);
-  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+  gl_Position = vA > 0.0 ? projectionMatrix * viewMatrix * vec4(p, 1.0) : vec4(0.0, 0.0, 2.0, 1.0);  // unlit or burnt out: off clip space, no fragments
 }`;
 
 export const TONGUE_F = /* glsl */`
-uniform float uT, uHot, uTA; varying vec2 vUv; varying float vS, vA, vK;
+uniform float uT, uHot, uTA;
+varying vec2 vUv;
+varying float vS, vA, vK;
 ${NOISE}
 void main() {
   float y = vUv.y, x = vUv.x - 0.5;
   x += (n2(vec2(y * 2.5 - uT * 3.5, vS)) - 0.5) * 0.5 * y;  // the tongue wavers, most at the tip
-  float wd = 0.46 * pow(1.0 - y, 0.75) * smoothstep(-0.05, 0.2, y);
+  float wd = 0.46 * pow(max(1.0 - y, 0.0), 0.75) * smoothstep(-0.05, 0.2, y);  // y can run past 1 at a card's edge (MSAA): no pow of a negative
   float n = n2(vec2(vUv.x * 4.0 + vS, y * 3.0 - uT * 4.5));
   float d = 1.0 - abs(x) / max(wd, 0.001) + (n - 0.5) * 0.8 * y;
   float a = smoothstep(0.0, 0.5, d) * smoothstep(0.0, 0.08, y) * vA * uTA * (1.0 - 0.55 * vK);  // the pile's tongues overlap many deep
@@ -114,7 +126,9 @@ void main() {
 // Embers: sparks that leave the fronts and the piles (position: u or angle, line 0-4 or pile 5-6), rise and drift
 // downwind on t; as the air clears they sink back.
 export const EMBER = /* glsl */`
-uniform float uEmber, uClear, uHot; varying float vA; varying vec3 vC;
+uniform float uEmber, uClear, uHot;
+varying float vA;
+varying vec3 vC;
 ${FIRE}
 void main() {
   float life = fract(aSeed.w + uT * (0.05 + aSeed.x * 0.07)), amt, age;
@@ -157,7 +171,7 @@ void main() {
   float h = position.y, H = length(m[1].xyz), s = hash(base.xz), s2 = hash(base.zx + 7.0), s3 = hash(base.xz * 1.7 + 3.1);
   // fire first: between each ignition line and its front the straw is burnt down to black stubs; near the front and
   // around a burning pile the stubble is lit; none grows through a pile
-  float fg = 0.0, burnt = 0.0, inPile = 0.0;
+  float fg = 0.0, burnt = 0.0, inPile = 0.0, field = step(float(gl_InstanceID), uFieldN - 0.5);  // 1 for field blades, 0 for the piles' straw
   if (uFireAmt + uChar > 0.001) {
     for (int i = 0; i < 5; i++) {
       vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
@@ -170,16 +184,18 @@ void main() {
       vec2 d = base.xz - uPiles[i].xy;
       float r2 = dot(d, d), R = uPiles[i].z;
       fg += pAmt(i) * 2.5 / (1.0 + r2 * 0.25);
-      inPile = max(inPile, step(r2, R * R * 0.8) * step(base.y, 0.12));
+      inPile = max(inPile, step(r2, R * R * 0.8) * field);
       burnt = max(burnt, smoothstep(0.0, 0.5, uBurn - uPileT[i]) * step(r2, (R + 0.5) * (R + 0.5)));
     }
   }
   float dist = length(cameraPosition - base);
-  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt * step(base.y, 0.12)) * (1.0 - inPile) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
-  if (float(gl_InstanceID) > uFieldN - 0.5) w.y = gH(base.xz) + (w.y - gH(base.xz)) * uPileK;  // the piles' straw sinks with them
+  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt * field) * (1.0 - inPile) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
+  if (field < 0.5) w.y = gH(base.xz) + (w.y - gH(base.xz)) * uPileK;  // the piles' straw sinks with them
   float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
   float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
-  w.x += h * h * H * sway; w.z -= h * h * H * sway * 0.3; w.y -= h * h * H * sway * sway * 0.5;
+  w.x += h * h * H * sway;
+  w.z -= h * h * H * sway * 0.3;
+  w.y -= h * h * H * sway * sway * 0.5;
   vec3 n = normalize(mat3(m) * vec3(0.0, 0.0, 1.0)), v = normalize(cameraPosition - w);
   n *= dot(n, v) < 0.0 ? -1.0 : 1.0;  // the face we see
   // low sun: the faces turned to it are lit, the rest glow only through (thin straw) and on the tips against the sun
@@ -189,7 +205,8 @@ void main() {
   straw *= 0.5 + 0.5 * smoothstep(0.0, 0.7, h);  // darker bases, deep in the row
   straw = mix(straw, dot(straw, vec3(0.3, 0.55, 0.15)) * vec3(1.12, 0.96, 0.72), 0.45 * uCool);  // after sunset: desaturated ochre, still straw
   float tip = h * h, rim = back * tip * (1.6 + 4.0 * s3 * s3) * uRimK;  // some tips flare gold against the sun
-  vec2 hp = base.xz - uHutSh.xy; float al = dot(hp, uHutSh.zw), ac = abs(dot(hp, vec2(-uHutSh.w, uHutSh.z)));
+  vec2 hp = base.xz - uHutSh.xy;
+  float al = dot(hp, uHutSh.zw), ac = abs(dot(hp, vec2(-uHutSh.w, uHutSh.z)));
   float hutSh = smoothstep(-0.6, 0.8, al) * smoothstep(uHutL.x, uHutL.x * 0.55, al) * smoothstep(uHutL.y, uHutL.y * 0.35, ac);  // the hut's long shadow toward the camera
   vec3 amb = uAmb * mix(vec3(1.0), mix(vec3(0.72, 0.76, 1.0), vec3(1.08, 0.96, 0.8), h), uCool);  // after sunset only the shade goes blue
   vec3 light = amb * (mix(0.22, 0.45, uSmall) + mix(0.78, 0.55, uSmall) * h) + uSunCol * mix(lit * (0.25 + 0.75 * h) + through * 0.3 * h + rim, (lit + rim) * tip * 1.3, uCool) * (1.0 - 0.85 * hutSh);
@@ -236,7 +253,7 @@ void main() {
   p.z += jz * wide * (0.5 + 0.6 * top);
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
-  gl_PointSize = min(psize((0.55 + 0.9 * fract(aSeed.y * 5.3 + aSeed.z)) * (uPuff + h * 8.0 + top * 4.0), mv), uSmokeCap * uScale * (0.55 + 0.45 * aSeed.z));
+  gl_PointSize = col.w > 0.0 ? min(psize((0.55 + 0.9 * fract(aSeed.y * 5.3 + aSeed.z)) * (uPuff + h * 8.0 + top * 4.0), mv), uSmokeCap * uScale * (0.55 + 0.45 * aSeed.z)) : 0.0;  // a column not lit yet draws nothing
   // thin right at the fire line, densest a little above it, thinning as it climbs, faded right at the lens
   vA = uS * (1.0 - 0.55 * uClear) * uSmokeA * smoothstep(-0.02, uFoot, hf) * (1.0 - 0.6 * hf) * smoothstep(2.0, 7.0, -mv.z);
   vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.05, 0.5, hf));
@@ -262,45 +279,65 @@ void main() {
 }`;
 
 // Fibres: each one is a long thin strip (position.x: side -1/1, position.y: 0 at its head to 1 at its tail) traced back
-// along its own path: the tail is where the head was a little earlier in the fold, so a straw follows the flow and bends
-// with it. They lift off the stubble front left, rise in an S-curve (right, back up left, then right) to above the spot
-// where the packaging forms, then settle into the box, bowl and cup. Width in pixels, tapered to the tail.
+// along its own path: the tail is where the head was a little earlier in its flow, so a straw follows the flow and bends
+// with it. They lift off the stubble, rise along the ribbon's spine (uSpine: an S, moved per beat), leave it for their
+// own piece (aPiece; the cutlery branches off lower down) and arc into it. Each piece has its own flow (uFlow), so at
+// the forming beat the box nearest the ribbon is still being woven while the cup is done. Width in pixels, tapered.
 export const FIBRE = /* glsl */`
 attribute vec3 aStart, aEnd;
 attribute vec4 aSeed;
-uniform float uT, uScale, uFold, uFibA, uFibOut, uSurf, uLift, uLiftK;
-uniform vec3 uSpine[5], uStartOff;
-varying float vA, vSide, vW, vShade, vTail; varying vec3 vFC;
+attribute float aPiece;
+uniform float uT, uScale, uFibA, uFibOut, uSurf, uLift, uLiftK, uSpan, uWid, uStartK, uBranch, uAbs;
+uniform float uFlow[6];
+uniform vec3 uSpine[5], uStartOff, uStartRef;
+varying float vA, vSide, vW, vShade, vTail;
+varying vec3 vFC;
+const float KOUT[6] = float[6](1.0, 1.0, 1.0, 0.27, 0.25, 0.23);  // where each piece's straws leave the spine (forming beat): the cutlery's at its own height
+const float BEND[6] = float[6](0.1, 0.22, 0.3, 0.06, 0.05, 0.04);  // how high their last arc rises (over the box to the bowl and cup)
+float gH(vec2 p) { return (0.1 * sin(p.x * 0.9) * cos(p.y * 0.7) + 0.05 * sin(p.x * 2.3 + p.y * 1.7)) * smoothstep(-36.0, -31.0, p.y); }
 vec3 cr(vec3 a, vec3 b, vec3 c, vec3 d, float t) { return 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t + (3.0 * b - a - 3.0 * c + d) * t * t * t); }
-// the ribbon's spine through uSpine (world, set per screen shape): off the stubble, a low lobe right, back up left, up
-// right, and a curl back over the forming spot
+// the ribbon's spine through uSpine (world, set per beat and screen shape)
 vec3 spine(float k) {
   float f = clamp(k, 0.0, 1.0) * 4.0;
   int i = int(min(floor(f), 3.0));
   return cr(uSpine[max(i - 1, 0)], uSpine[i], uSpine[i + 1], uSpine[min(i + 2, 4)], f - float(i));
 }
-vec3 at(float fold, float t) {
-  float u = clamp((fold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), k = clamp((u - 0.12) / 0.7, 0.0, 1.0);  // staggered: some still lifting while others land
+vec3 at(float fold, float t, float ko, float bend) {
+  float u = clamp((fold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), kn = clamp((u - 0.12) / 0.7, 0.0, 1.0), k = kn * ko;  // staggered: some still lifting while others land
   vec3 s = spine(k);
-  float wid = 0.14 + 0.3 * smoothstep(0.0, 0.4, k) * (1.0 - 0.7 * smoothstep(0.7, 1.0, k));  // loose where it leaves the ground, a sheaf in the middle, gathered at the end
+  float wid = (0.14 + 0.3 * smoothstep(0.0, 0.4, kn) * (1.0 - 0.7 * smoothstep(0.7, 1.0, kn))) * uWid;  // loose where it leaves the ground, a sheaf in the middle, gathered at the end
   vec3 j = vec3(fract(aSeed.z * 13.1) + fract(aSeed.y * 3.7), fract(aSeed.z * 7.9) + fract(aSeed.w * 5.1), fract(aSeed.z * 5.3) + fract(aSeed.x * 9.3)) - 1.0;  // denser at the core
   s += j * wid * (1.0 + 1.2 * step(fract(aSeed.z * 31.7), 0.06)) + vec3(0.0, sin(k * 9.0 - t * 1.2 + aSeed.y * 6.28) * 0.07, 0.0);  // a few strays; a slow ripple
   float lift = smoothstep(0.0, 0.14, u), land = smoothstep(0.82, 1.0, u);
-  vec3 p = mix(mix(aStart + uStartOff, s, lift), aEnd, land);
-  p.y += uLift * (0.15 + 0.85 * fract(aSeed.w * 9.7));  // with the lifted pieces: the trailing straws hang below them
-  p.y += (1.0 - lift) * 0.03 * sin(t * 1.5 + aSeed.w * 30.0);
-  return p;
+  vec3 st = uStartRef + uStartOff + (aStart - uStartRef) * vec3(uStartK, 1.0, uStartK);  // the patch it lifts from, gathered in for the forming beat
+  st.y = mix(aStart.y, gH(st.xz) + 0.05, uBranch);
+  vec3 e = aEnd + vec3(0.0, uLift, 0.0);  // its spot on the piece, which has risen to chest height
+  vec3 c = mix(s, e, 0.5) + vec3(0.0, bend * distance(s, e), 0.0);  // the last arc (straight while bend is 0)
+  vec3 q = mix(st, s, lift);
+  q.y += (1.0 - lift) * 0.03 * sin(t * 1.5 + aSeed.w * 30.0);
+  return (1.0 - land) * (1.0 - land) * q + 2.0 * land * (1.0 - land) * c + land * land * e;  // landing starts once it has lifted (q is s by then)
 }
 void main() {
+  int pc = int(aPiece + 0.5);
+  float fold = uFlow[pc], ko = mix(1.0, KOUT[pc], uBranch), bend = BEND[pc] * uBranch;
   float r1 = fract(aSeed.w * 13.7 + aSeed.x * 3.1), r2 = fract(aSeed.y * 9.1 + aSeed.w * 2.3), r3 = fract(aSeed.z * 5.9 + aSeed.y * 1.7);
-  float a = position.y, span = 0.012 + 0.02 * r1;  // straws of many lengths, about 0.5 to 1.4 m in flight
-  float u = clamp((uFold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), lift = smoothstep(0.0, 0.14, u), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
+  float a = position.y, span = (0.012 + 0.02 * r1) * uSpan;  // straws of many lengths, about 0.5 to 1.4 m in flight (longer as they wrap the pieces)
+  float uRaw = (fold - aSeed.x * 0.6) / 0.4, u = clamp(uRaw, 0.0, 1.0), lift = smoothstep(0.0, 0.14, u), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
   vec3 lie = vec3(cos(aSeed.w * 6.28), 0.0, sin(aSeed.w * 6.28)) * 0.3 * (1.0 - lift);  // before it lifts: a short straw lying in the stubble
-  vec3 p0 = at(uFold - a * span, uT - a * 0.25) + lie * a;
-  vec3 p1 = at(uFold - (a + 0.05) * span, uT - (a + 0.05) * 0.25) + lie * (a + 0.05);
+  vec3 p0 = at(fold - a * span, uT - a * 0.25, ko, bend) + lie * a;
+  vec3 p1 = at(fold - (a + 0.05) * span, uT - (a + 0.05) * 0.25, ko, bend) + lie * (a + 0.05);
   mat4 pm = projectionMatrix * modelViewMatrix;
   vec4 c0 = pm * vec4(p0, 1.0), c1 = pm * vec4(p1, 1.0);
-  if (c0.w < 0.05 || c1.w < 0.05) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vA = 0.0; return; }  // at or behind the lens
+  float tr = step(fract(aSeed.y * 17.3), 0.03);  // a few straws trail the presented pieces
+  float landOld = (1.0 - 0.75 * smoothstep(0.86, 1.0, u) * (1.0 - tr)) * (1.0 - uSurf * (1.0 - tr * uLiftK));
+  float landNew = 1.0 - smoothstep(1.0, 1.0 + span / 0.4, uRaw);  // the forming beat: a straw stays until its tail has gone into the piece
+  float alpha = uFibA * smoothstep(0.0, 0.05, u) * (0.6 + 0.4 * smoothstep(0.02, 0.25, e)) * mix(landOld, landNew, uAbs) * (0.75 + 0.25 * w) * (1.0 - uFibOut);
+  if (pc > 2) alpha *= 1.0 - uBranch * smoothstep(0.3, 0.8, distance(p0, aEnd + vec3(0.0, uLift, 0.0)));  // the cutlery's straws show only as short wisps trailing into the handles
+  if (c0.w < 0.05 || c1.w < 0.05 || alpha <= 0.0) {
+    gl_Position = vec4(0.0, 0.0, 2.0, 1.0);  // at or behind the lens, or not drawn: off clip space
+    vA = 0.0;
+    return;
+  }
   vec2 px = vec2(projectionMatrix[0][0], projectionMatrix[1][1]) / uScale;  // one pixel in NDC
   vec2 dir = (c1.xy / c1.w - c0.xy / c0.w) / px;
   vec2 nrm = length(dir) > 1e-4 ? normalize(vec2(-dir.y, dir.x)) : vec2(0.0, 1.0);
@@ -310,9 +347,7 @@ void main() {
   gl_Position = c0 + vec4(nrm * position.x * (0.5 * max(wpx, 1.0) + 0.75) * px * c0.w, 0.0, 0.0);  // never under a pixel; a little more for soft edges
   vTail = a;
   vFC = r3 < 0.6 ? mix(vec3(1.0, 0.6, 0.22), vec3(0.8, 0.5, 0.24), r3 / 0.6) : mix(vec3(0.8, 0.5, 0.24), vec3(0.95, 0.76, 0.46), (r3 - 0.6) / 0.4);  // gold, tan, pale gold
-  float tr = step(fract(aSeed.y * 17.3), 0.03);  // a few straws trail the presented pieces
-  vA = uFibA * smoothstep(0.0, 0.05, u) * (0.6 + 0.4 * smoothstep(0.02, 0.25, e)) * (1.0 - 0.75 * smoothstep(0.86, 1.0, u) * (1.0 - tr)) * (0.75 + 0.25 * w);
-  vA *= (1.0 - uSurf * (1.0 - tr * uLiftK)) * (1.0 - uFibOut) * (1.0 - 0.55 * step(fract(aSeed.z * 31.7), 0.06)) * min(wpx, 1.0);  // gone once the surface fills in; thinner than a pixel fades
+  vA = alpha * (1.0 - 0.55 * step(fract(aSeed.z * 31.7), 0.06)) * min(wpx, 1.0);  // strays fainter; thinner than a pixel fades
   vShade = (0.7 + 0.4 * fract(aSeed.w * 7.13)) * (0.7 + 0.35 * smoothstep(0.2, 3.0, (modelMatrix * vec4(p0, 1.0)).y));  // darker low by the stubble, brighter up against the sky
 }`;
 
@@ -337,6 +372,7 @@ void main() {
   gl_Position = projectionMatrix * mv;
   gl_PointSize = psize(0.16 * (1.0 - aSeed.y * 0.6), mv);
   vA = (1.0 - aSeed.y) * smoothstep(0.0, 0.03, e0) * (1.0 - smoothstep(0.85, 1.0, e0)) * (0.6 + 0.4 * sin(uT * 6.0 + aSeed.w * 30.0));
+  vA *= smoothstep(1.5, 4.0, -mv.z);  // none right at the lens (they bloomed into a white cloud as the camera passed the pieces)
   vC = vec3(1.0, 0.78, 0.42);
 }`;
 
@@ -367,13 +403,17 @@ void main() {
   if (aSeed.z > 0.85) b = fract(b + 0.5);  // a few windows in another tone
   float floorLit = fract(sin(floor(position.y / 0.9) * 17.3 + position.z * 7.1) * 43758.5453);  // whole floors on or off
   vA = uCity * step(floorLit < uLitF ? 0.3 : 0.93, aSeed.w) * (0.25 + 0.75 * aSeed.w * aSeed.w) * (1.0 - 0.5 * smoothstep(70.0, 150.0, -mv.z)) * (0.6 + 0.4 * uWin);  // phones: bigger, brighter windows
+  vA *= 0.3 + 0.7 * pow(fract(aSeed.x * 31.7 + aSeed.y * 3.3), 1.5);  // many dim, a few bright
   vC = (b < 0.62 ? vec3(1.0, 0.58, 0.26) : b < 0.88 ? vec3(1.0, 0.78, 0.55) : vec3(0.7, 0.82, 1.0)) * (0.75 + 0.5 * fract(aSeed.x * 7.3));
   vC *= (fract(floorLit * 7.0) < 0.3 ? vec3(1.0, 0.86, 0.72) : vec3(1.0)) * (0.55 + 0.45 * fract(floorLit * 13.0));  // floors differ in warmth and brightness
 }`;
 
 export const CITY_F = /* glsl */`
 varying float vA; varying vec3 vC;
-void main() { vec2 c = abs(gl_PointCoord - 0.5) * 2.0; gl_FragColor = vec4(vC, vA * smoothstep(1.0, 0.55, max(c.x, c.y * 0.8))); }`;
+void main() {
+  vec2 c = abs(gl_PointCoord - 0.5) * 2.0;
+  gl_FragColor = vec4(vC, vA * smoothstep(1.0, 0.3, max(c.x, c.y * 0.8)));  // soft edges: the city sits a little out of focus
+}`;
 
 // Street bokeh in front of the city: traffic, shop signs and lamps, out of focus; it hides the blocks' bases.
 export const BOKEH = /* glsl */`
@@ -522,4 +562,39 @@ float ph(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 437
 float pn(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(mix(ph(i), ph(i + vec3(1, 0, 0)), f.x), mix(ph(i + vec3(0, 1, 0)), ph(i + vec3(1, 1, 0)), f.x), f.y),
              mix(mix(ph(i + vec3(0, 0, 1)), ph(i + vec3(1, 0, 1)), f.x), mix(ph(i + vec3(0, 1, 1)), ph(i + 1.0), f.x), f.y), f.z); }
+`;
+
+// The packaging models as they form (film.js pulpForm): the side away from the ribbon is pressed first; the rest is still
+// a weave of straw (a criss-cross of strands, sparser away from the front) that the incoming fibres fill. Once pressed:
+// soft dimples and fibre streaks in the normal, uneven roughness, a warm rim against the sky.
+export const FORM = /* glsl */`
+uniform vec3 uRim, uWipeC, uWipeD;
+uniform float uForm, uLat;
+varying vec3 vFormW, vFormO;
+float fh(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float fn(vec3 p) {
+  vec3 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(fh(i), fh(i + vec3(1, 0, 0)), f.x), mix(fh(i + vec3(0, 1, 0)), fh(i + vec3(1, 1, 0)), f.x), f.y),
+             mix(mix(fh(i + vec3(0, 0, 1)), fh(i + vec3(1, 0, 1)), f.x), mix(fh(i + vec3(0, 1, 1)), fh(i + 1.0), f.x), f.y), f.z);
+}
+`;
+export const FORM_MASK = /* glsl */`
+  float front = mix(-1.6, 1.5, uForm), fib = 0.0, hgt = fn(vFormO * vec3(160.0, 110.0, 160.0));  // hgt: the pressed pulp's soft dimples (bump and roughness)
+  if (uForm < 1.5) fib = step(front, dot(vFormW - uWipeC, uWipeD) + (fn(vFormO * 90.0) - 0.5) * 0.5);  // -1 on the far side .. 1 where the straws come in, a ragged edge (none once pressed)
+  if (fib > 0.5) {
+    float fw = dot(vFormW - uWipeC, uWipeD);
+    vec3 o = vFormO * 120.0;
+    float wv = fn(o * 0.35) * 0.6;
+    float l1 = abs(fract(o.x + o.y * 0.7 + o.z * 0.9 + wv) - 0.5);
+    float l2 = abs(fract(o.x * 0.9 - o.y * 0.6 - o.z + wv * 1.3) - 0.5);
+    if (min(l1, l2) > 0.15 - 0.09 * smoothstep(0.0, 1.5, fw - front)) discard;
+  }
+`;
+export const FORM_BUMP = /* glsl */`
+  vec3 dpx = dFdx(-vViewPosition), dpy = dFdy(-vViewPosition);
+  vec3 br1 = cross(dpy, normal), br2 = cross(normal, dpx);
+  float bdet = dot(dpx, br1);
+  vec3 nb = abs(bdet) * normal - sign(bdet) * (dFdx(hgt) * br1 + dFdy(hgt) * br2) * 0.0008 * (1.0 - fib);
+  normal = dot(nb, nb) > 1e-30 ? normalize(nb) : normal;  // degenerate derivatives: keep the normal (a NaN would spread through the bloom)
 `;
