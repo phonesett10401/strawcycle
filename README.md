@@ -9,7 +9,7 @@ This website is a **demo**. Nothing you buy is real: no payment is taken, no ord
 | Page | What it shows |
 | --- | --- |
 | `index.html` Home | A scroll film made with Three.js: field, smoke, straw turning into packaging, a café table. Then two buttons: business packaging, or sponsor a field. |
-| `business.html` Business | Five products sold by the carton, live prices, the partner window sticker, a free sample form and a quote form. |
+| `business.html` Business | Seven products sold by the carton, live prices, the partner window sticker, a free sample form and a quote form. |
 | `sponsor.html` Sponsor | Sponsor 1 to 10 rai of field at ฿99 per rai, with a certificate preview, or buy a home pack of 50 meal boxes (฿249). |
 | `impact.html` Impact | Why straw is burned, how the money reaches the farmer, two real projects doing this already, and where our numbers come from. |
 | `help.html` Help | Delivery, shipping, samples, returns and common questions. |
