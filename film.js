@@ -923,6 +923,7 @@ function build(canvas, renderer, tier) {
       festY = null;
     }
     if (M.packaging) packSwap = () => swapPack(M);
+    warm();
   }
   function swapPack(M) {
     M.packaging.userData.pieces.forEach((node, i) => {
@@ -999,6 +1000,7 @@ function build(canvas, renderer, tier) {
     if (packSwap && (!drawn || P.fold < 0.05)) {
       packSwap();
       packSwap = null;
+      warm();
     }
     camera.position.set(P.camera.x, P.camera.y, P.camera.z);
     camera.lookAt(P.camera.lookX, P.camera.lookY, P.camera.lookZ);
@@ -1255,6 +1257,24 @@ function build(canvas, renderer, tier) {
     const next = mod.createPost(THREE, renderer, scene, camera, tier);
     post = next;
     try { resize(true); } catch (e) { post = null; next.dispose(); throw e; }  // never leave a half-attached post
+    warm();
+  }
+
+  // Three compiles a material's shader the first time it is drawn, so the first sight of the café, the city, the smoke or
+  // the pressed packaging stalled a frame mid-scroll. Shortly after each change (start, post, models, the packaging
+  // swap) every material is compiled for the target it is drawn into (post's buffer, or the screen) and every texture
+  // uploaded, while the page is idle. Frames look the same either way.
+  let warmT = 0;
+  function warm() {
+    clearTimeout(warmT);
+    warmT = setTimeout(() => {
+      if (disposed) return;
+      scene.traverse((o) => [].concat(o.material || []).forEach((m) => Object.values(m).forEach((x) => { if (x?.isTexture) renderer.initTexture(x); })));
+      const was = renderer.getRenderTarget();
+      renderer.setRenderTarget(post ? post.target : null);
+      renderer.compileAsync(scene, camera).catch(() => {});
+      renderer.setRenderTarget(was);
+    }, 200);
   }
 
   function resize(force) {
@@ -1268,8 +1288,12 @@ function build(canvas, renderer, tier) {
     post?.resize(w, h, renderer.getPixelRatio());
   }
   resize();
+  warm();
 
+  let disposed = false;
   function dispose(keepRenderer) {
+    disposed = true;
+    clearTimeout(warmT);
     post?.dispose(); post = null;
     shadowTex.dispose();
     scene.traverse((o) => {
@@ -1282,6 +1306,8 @@ function build(canvas, renderer, tier) {
 }
 
 // ---- page wiring ----------------------------------------------------------------------------
+// the fastest the live film follows the scroll, in p per second (scroll -> p catch-up in boot)
+const MAX_RATE = 0.45;
 let clock = 0;
 function fallback() {
   window.scStills(); root.classList.remove('film'); delete window.scFilm;
@@ -1326,8 +1352,13 @@ async function boot() {
   const docTop = (el) => { let y = 0; for (; el; el = el.offsetParent) y += el.offsetTop; return y; };
   // p at which beats 1-4 hold their caption: fire starting, smoke, fibres, packaging (extra captions reuse the last)
   const CAPTION_P = [0.2, 0.37, 0.6, 0.72];
+  // H is the small viewport (100svh, URL bar shown): a phone's URL bar sliding in or out during a flick resizes the
+  // window but must not move the anchors (p would jump); the beats are 100svh tall, so the layout stays put too
+  const svh = Object.assign(document.createElement('div'), { ariaHidden: 'true' });
+  svh.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none';
+  document.body.append(svh);
   const measure = () => {
-    const H = innerHeight, gap = Math.max(48, 0.08 * H);
+    const H = svh.offsetHeight || innerHeight, gap = Math.max(48, 0.08 * H);
     let x = 0; pts = [[0, 0.05]];
     caps.forEach((c, i) => { x = Math.max(x + 1, docTop(c) + c.offsetHeight - (H - gap)); pts.push([x, CAPTION_P[i] ?? CAPTION_P[CAPTION_P.length - 1]]); });
     pts.push([Math.max(x + 1, docTop(doors) + doors.offsetHeight / 2 - H / 2), 1]);
@@ -1365,7 +1396,10 @@ async function boot() {
     if (last && now - last < 12) return;  // 90/120 Hz screens draw every other frame (battery)
     const dt = last ? now - last : 16;
     last = now;
-    shown += (target() - shown) * (1 - Math.exp(-dt / 120));  // a little damping on wheel steps
+    // a little damping on wheel steps, and a capped catch-up: a flick plays each beat over at least about half a second
+    // instead of jumping past it (the flight to the café, p 0.72-1, takes 0.6 s or more)
+    const step = (target() - shown) * (1 - Math.exp(-dt / 120)), cap = MAX_RATE * Math.min(dt, 50) / 1000;
+    shown += Math.max(-cap, Math.min(cap, step));
     const t = (now - t0) / 1000;
     film.render(shown, t);
     tick(t);

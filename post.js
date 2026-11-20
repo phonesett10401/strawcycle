@@ -76,6 +76,7 @@ export function createPost(THREE, renderer, scene, camera, tier) {
   fxaaRes();
 
   return {
+    target,                                                    // what the scene is drawn into (film.js compiles for it ahead)
     render(u) {
       bloom.strength = bloomBase * (0.7 + 0.3 * u.glow);
       bloom.radius = 0.55 - 0.4 * (u.fire ?? 0);                 // tight around the flames, so they keep their edges

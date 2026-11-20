@@ -428,6 +428,7 @@ html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radi
 .counters dd { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--text-xl); }
 .doors { display: grid; align-content: start; min-height: 100svh; padding-block: calc(var(--header-h) * 2 + var(--space-lg)) var(--space-3xl); } /* clears the sticky header (two rows on phones) when centred at the end of the film */
 .doors h2 { margin: 0; }
+html.film .doors { margin-top: 50svh; }  /* more scroll for the flight to the café (p 0.72-1), so a normal flick still shows it */
 @media (max-width: 40rem) {
   .beat { padding-block: var(--space-2xl); }
   /* one compact row on phones, so the forming packaging keeps the middle of the screen */
