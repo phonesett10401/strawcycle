@@ -40,7 +40,7 @@ Then open <http://127.0.0.1:5173>. (Opening the files straight from disk does no
 node --test
 ```
 
-The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film timeline (`timeline.js`) and the shared parts every page must have.
+The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film timeline (`timeline.js`), the film tiers and flags (`tiers.js`), the model budget (`tests/models.test.mjs`) and the shared parts every page must have.
 
 ## Deploy on Vercel
 
@@ -51,24 +51,35 @@ The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film
 
 ## Recording the film for the video
 
-The Home film can be switched with a URL flag:
+The Home film picks one of three detail tiers:
+
+- **Low** has no post-processing and fewer particles. Phones, touch devices, narrow screens, devices with 4 GB of memory or less, and integrated GPUs (Intel HD/UHD/Iris, Radeon Vega and `M`-series, Mali, Adreno) start here.
+- **High** is the default on a desktop with a discrete GPU: post-processing, anti-aliasing and about ten times Low's particles.
+- **Ultra** is for recording. It is used only by `?film=video`: no anti-aliasing, about thirty times Low's particles, and the resolution of the capture window.
+
+If frames run slow, the live film steps down one level at a time (High, then High at pixel ratio 1, then Low, then the stills).
+
+The film is switched with URL flags:
 
 - `index.html?film=off` shows the four still images instead of the 3D film.
-- `index.html?film=video` is for screen-capture tools. It turns off anti-aliasing, skips the speed check and stops the scroll loop, so the capture tool draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds).
+- `index.html?film=video&p=0.37&t=2` is for screen-capture tools. It uses Ultra, skips the speed check, stops the scroll loop and waits until the models and post-processing have loaded. The capture tool then draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds). `p` and `t` in the URL set the first frame. Add `&tier=low` to capture the phone look.
+- `index.html?film=bench` plays the film from start to end in 20 seconds with no frame skipping and no step-downs, to measure frame times.
 
-The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit; it first drops to a lower resolution), WebGL is missing or the Three.js download fails.
+The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit), WebGL is missing or the Three.js download fails.
 
-## The still images (ChatGPT step)
+## The 3D models
 
-The stills are SVG placeholders for now. To replace them:
+The hut, the farmer, the packaging (box, bowl, cup, cutlery, straw) and the café (table, chairs, bulbs) are Blender models in `models/*.glb`, loaded by the film. They are built by Python scripts in `blender/` run in Blender without its window, and the `.glb` files are committed, so you only need Blender to change a model. `docs/blender.md` has the setup and the rebuild commands.
 
-1. Open `docs/image-prompts.md` and paste each scene's prompt into ChatGPT.
-2. Save each scene twice: a 16:9 image as `images/scene-N.jpg` and a 9:16 image as `images/scene-N-tall.jpg` (N is 1 to 4). Keep each under about 300 KB.
-3. That's it. The page uses the JPGs when they exist and falls back to `images/scene-N.svg` when they don't.
+`tests/models.test.mjs` keeps the models inside their budget (1.5 MB and 200,000 triangles in total) and checks the node names the film looks up. A model that fails to load is left out and the film still plays.
+
+## The still images
+
+The stills are renders of the Ultra film at four points (`p` 0.12, 0.37, 0.62 and 0.95): a 16:9 image as `images/scene-N.jpg` and a 9:16 image as `images/scene-N-tall.jpg` (N is 1 to 4), each under about 350 KB. To replace them, capture `?film=video&p=...` at 1920×1080 and 1080×1920 and save the JPGs under those names. The page falls back to `images/scene-N.svg` if a JPG is missing.
 
 ## Credits
 
 - [Three.js](https://threejs.org) r170 (MIT licence), loaded from jsDelivr, draws the Home film.
 - Fonts: Solway and Figtree from Google Fonts (SIL Open Font License).
 - Facts and sources: IQAir, GIZ Thailand (Thai-German Cooperation) and the SEED profile of Fang Thai Factory. Each source is linked on `impact.html`.
-- The still images are made with ChatGPT from the prompts in `docs/image-prompts.md`.
+- The 3D models (hut, farmer, packaging, café) are our own work, built from the scripts in `blender/`, and so are the still images, rendered from the film.
