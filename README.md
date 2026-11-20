@@ -75,7 +75,7 @@ The hut, the farmer, the packaging (box, bowl, cup, cutlery, straw) and the caf�
 
 ## The still images
 
-The stills are renders of the Ultra film at four points (`p` 0.12, 0.37, 0.62 and 0.95): a 16:9 image as `images/scene-N.jpg` and a 9:16 image as `images/scene-N-tall.jpg` (N is 1 to 4), each under about 350 KB. To replace them, capture `?film=video&p=...` at 1920×1080 and 1080×1920 and save the JPGs under those names. The page falls back to `images/scene-N.svg` if a JPG is missing.
+The stills are renders of the Ultra film at four points (`p` 0.12, 0.37, 0.72 and 1.0): a 16:9 image as `images/scene-N.jpg` and a 9:16 image as `images/scene-N-tall.jpg` (N is 1 to 4), each under about 350 KB. To replace them, capture `?film=video&p=...` at 1920×1080 and 1080×1920 and save the JPGs under those names. The page falls back to `images/scene-N.svg` if a JPG is missing.
 
 ## Credits
 
