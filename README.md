@@ -65,7 +65,7 @@ The film is switched with URL flags:
 - `index.html?film=video&p=0.37&t=2` is for screen-capture tools. It uses Ultra, skips the speed check, stops the scroll loop and waits until the models and post-processing have loaded. The capture tool then draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds). `p` and `t` in the URL set the first frame. Add `&tier=low` to capture the Low tier; it gives the phone look (half the particles) only when the capture window is under 768 px wide.
 - `index.html?film=bench` plays the film from start to end in 20 seconds with no frame skipping and no step-downs, to measure frame times.
 
-The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit), WebGL is missing, the Three.js download fails, the film has not started within 4 seconds, or the browser loses the WebGL context. Once it has fallen back to the stills it does not download the models. With JavaScript off, the page shows the same JPG stills.
+The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit), WebGL is missing, the Three.js download fails, the film has not started within 4 seconds, or the browser loses the WebGL context. Once it has fallen back to the stills it stops loading the models: no new model downloads start, and models already on their way are not unpacked or shown. With JavaScript off, the page shows the same JPG stills.
 
 ## The 3D models
 
