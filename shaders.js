@@ -157,7 +157,7 @@ void main() {
 // Straw blades (InstancedMesh, local blade 0..1 tall): wind bend from a rolling gust and a per-blade flutter, both
 // pure in t and position. Lit by the sun (backlit tips glow), the fire lines, the packaging glow; haze far away.
 export const BLADE_V = /* glsl */`
-uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uSmall, uPileK, uFieldN;
+uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uPileK, uFieldN, uSink;
 uniform vec3 uSunDir, uSunCol, uAmb, uPackPos;
 uniform vec4 uObj[3], uHutSh;
 uniform vec2 uHutL;
@@ -171,7 +171,7 @@ void main() {
   float h = position.y, H = length(m[1].xyz), s = hash(base.xz), s2 = hash(base.zx + 7.0), s3 = hash(base.xz * 1.7 + 3.1);
   // fire first: between each ignition line and its front the straw is burnt down to black stubs; near the front and
   // around a burning pile the stubble is lit; none grows through a pile
-  float fg = 0.0, burnt = 0.0, inPile = 0.0, field = step(float(gl_InstanceID), uFieldN - 0.5);  // 1 for field blades, 0 for the piles' straw
+  float fg = 0.0, burnt = 0.0, heat = 0.0, inPile = 0.0, field = step(float(gl_InstanceID), uFieldN - 0.5);  // 1 for field blades, 0 for the piles' straw
   if (uFireAmt + uChar > 0.001) {
     for (int i = 0; i < 5; i++) {
       vec2 a = uFires[i].xy, ab = uFires[i].zw - a;
@@ -179,6 +179,7 @@ void main() {
       float age = fAge(i, clamp(k, 0.0, 1.0)), off = fOff(i, sl, L, age), w0 = fWob(float(i), sl), de = max(abs(k - 0.5) - 0.5, 0.0) * L;
       burnt = max(burnt, step(0.0, age) * step(0.0, k) * step(k, 1.0) * smoothstep(off - 0.15, off + 0.15, sd) * smoothstep(w0 + 0.5, w0 + 0.2, sd));
       fg += smoothstep(0.0, 0.03, age) / (1.0 + ((sd - off) * (sd - off) + de * de) * 0.9);
+      heat = max(heat, smoothstep(0.0, 0.03, age) * step(0.0, k) * step(k, 1.0) * exp(-max(off - sd, 0.0) * 0.9));  // the straw ahead of a front is licked down, so the flames and char show over the tall field
     }
     for (int i = 0; i < 2; i++) {
       vec2 d = base.xz - uPiles[i].xy;
@@ -189,7 +190,7 @@ void main() {
     }
   }
   float dist = length(cameraPosition - base);
-  w = base + (w - base) * (1.0 - 0.8 * uChar * burnt * field) * (1.0 - inPile) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
+  w = base + (w - base) * (1.0 - 0.8 * uChar * max(burnt, 0.7 * heat) * field) * (1.0 - inPile) * (1.0 - uSink) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
   if (field < 0.5) w.y = gH(base.xz) + (w.y - gH(base.xz)) * uPileK;  // the piles' straw sinks with them
   float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
   float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
@@ -198,18 +199,19 @@ void main() {
   w.y -= h * h * H * sway * sway * 0.5;
   vec3 n = normalize(mat3(m) * vec3(0.0, 0.0, 1.0)), v = normalize(cameraPosition - w);
   n *= dot(n, v) < 0.0 ? -1.0 : 1.0;  // the face we see
-  // low sun: the faces turned to it are lit, the rest glow only through (thin straw) and on the tips against the sun
-  float lit = max(dot(n, uSunDir), 0.0), through = max(-dot(n, uSunDir), 0.0), back = pow(max(dot(-v, uSunDir), 0.0), 4.0);
-  vec3 grey = vec3(0.46, 0.39, 0.32), tan = vec3(0.7, 0.52, 0.33), gold = vec3(0.92, 0.66, 0.32);  // per blade: grey-brown, tan, gold
-  vec3 straw = (s < 0.45 ? mix(grey, tan, s / 0.45) : mix(tan, gold, (s - 0.45) / 0.55)) * (0.82 + 0.3 * s2);
-  straw *= 0.5 + 0.5 * smoothstep(0.0, 0.7, h);  // darker bases, deep in the row
+  // v1's straw: umber to gold per blade, soft light on both faces, and the tips glowing gold against the low sun
+  float diff = 0.35 + 0.65 * abs(dot(n, uSunDir)), back = pow(max(dot(-v, uSunDir), 0.0), 4.0);
+  vec3 straw = mix(vec3(0.4, 0.25, 0.12), vec3(0.98, 0.72, 0.36), s) * (0.85 + 0.3 * s2);
+  straw *= 0.55 + 0.45 * h;  // darker down in the straw, so the blades read against each other
   straw = mix(straw, dot(straw, vec3(0.3, 0.55, 0.15)) * vec3(1.12, 0.96, 0.72), 0.45 * uCool);  // after sunset: desaturated ochre, still straw
   float tip = h * h, rim = back * tip * (1.6 + 4.0 * s3 * s3) * uRimK;  // some tips flare gold against the sun
   vec2 hp = base.xz - uHutSh.xy;
   float al = dot(hp, uHutSh.zw), ac = abs(dot(hp, vec2(-uHutSh.w, uHutSh.z)));
   float hutSh = smoothstep(-0.6, 0.8, al) * smoothstep(uHutL.x, uHutL.x * 0.55, al) * smoothstep(uHutL.y, uHutL.y * 0.35, ac);  // the hut's long shadow toward the camera
   vec3 amb = uAmb * mix(vec3(1.0), mix(vec3(0.72, 0.76, 1.0), vec3(1.08, 0.96, 0.8), h), uCool);  // after sunset only the shade goes blue
-  vec3 light = amb * (mix(0.22, 0.45, uSmall) + mix(0.78, 0.55, uSmall) * h) + uSunCol * mix(lit * (0.25 + 0.75 * h) + through * 0.3 * h + rim, (lit + rim) * tip * 1.3, uCool) * (1.0 - 0.85 * hutSh);
+  vec3 sunL = uSunCol * mix((0.25 + 0.75 * h) * (diff * 0.75 + back * h * 2.6) + rim * 0.5, (diff + rim) * tip * 1.3, uCool);
+  vec3 light = amb * (0.35 + 0.65 * h) + sunL * (1.0 - 0.85 * hutSh);
+  light = mix(light, vec3(dot(light, vec3(0.3, 0.55, 0.15))) * vec3(1.32, 0.95, 0.5), 0.65 * (1.0 - uCool));  // the red sunset lights the straw gold, not red
   straw = mix(straw, vec3(0.05, 0.04, 0.035), uChar * burnt);  // charred
   light += vec3(1.0, 0.45, 0.14) * uFireAmt * fg * (0.6 + 0.9 * h);
   vec3 pd = w - uPackPos;
@@ -528,8 +530,6 @@ void main() {
 // light on the stubble around it; the same around the burning piles.
 export const GROUND_FX = /* glsl */`
   if (uCityGround < 0.99) {
-    float rw = abs(fract(vWP.x / 0.3) - 0.5) * 2.0, fade = 1.0 - smoothstep(0.15, 0.5, fwidth(vWP.x / 0.3));
-    gl_FragColor.rgb *= 1.0 - uRows * (1.0 - rw) * fade * (1.0 - uCityGround);
     float burnt = 0.0, smoulder = 0.0, rim = 0.0, glow = 0.0;
     if (uChar + uFireAmt > 0.001) {  // only while the fields burn
       float j1 = (n2(vWP.xz * 3.5) - 0.5) * 0.3 + (n2(vWP.xz * 0.8) - 0.5) * 0.4;
@@ -550,6 +550,7 @@ export const GROUND_FX = /* glsl */`
         glow += am * exp(-max(d - R, 0.0) * 0.6);
       }
     }
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(dot(gl_FragColor.rgb, vec3(0.3, 0.55, 0.15))) * vec3(1.32, 0.95, 0.5), 0.65 * (1.0 - uCityGround));  // straw-gold soil under the red sunset, like the blades
     gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.018, 0.016, 0.015) + vec3(0.9, 0.2, 0.03) * smoulder * (0.2 + 0.8 * uFireAmt), uChar * burnt * 0.96);
     gl_FragColor.rgb += vec3(1.0, 0.42, 0.12) * uFireAmt * min(glow, 1.5) * 0.22 * (1.0 - 0.8 * burnt) + vec3(1.0, 0.55, 0.18) * uFireAmt * rim * 0.9;  // lit stubble; a hot rim on the front
   }

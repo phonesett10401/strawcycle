@@ -40,7 +40,6 @@ const groundH = (x, z) => (z < -36 ? 0 : (0.1 * Math.sin(x * 0.9) * Math.cos(z *
 const SMOKE_CAP = { low: 0.3, high: 0.22, ultra: 0.26 };  // largest smoke puff, x uScale (screen overdraw)
 const BLADES = 24000;                                // field blades at density 1 (High x10, Ultra x30)
 const C = [0, 2.4, -14];                              // where the straw swirls and folds
-const ROW = 0.3, HILL = 0.22;                         // harvest rows (along z) and the hill spacing along a row
 const HUT = [9, 0, -16];                              // right of the hero text, the sun setting behind it (0.5 m left of v1 so the 1.25x hut stays in the phone frame)
 const HUT_S = 1.25;                                   // the hut is drawn 1.25x around its ground origin so the farmer reads at real size beside it
 const DECK = 0.06;                                    // the terrace floor: cafe.glb's origin sits on it
@@ -310,9 +309,9 @@ function build(canvas, renderer, tier) {
   };
   const bladeU = {
     uT: U.uT, uFireAmt: { value: 0 }, uPack: { value: 0 }, uSunDir: { value: new THREE.Vector3() },
-    uSunCol: { value: col(1, 0.6, 0.3) }, uAmb: { value: col(0, 0, 0) }, uChar: { value: 0 }, uCool: { value: 0 }, uRows: { value: 0 }, uRimK: { value: 1 }, uSmall: { value: small ? 1 : 0 }, uHutSh: { value: new THREE.Vector4() }, uHutL: { value: new THREE.Vector2(1, 1) }, uPackPos: { value: new THREE.Vector3(...C) },
+    uSunCol: { value: col(1, 0.6, 0.3) }, uAmb: { value: col(0, 0, 0) }, uChar: { value: 0 }, uCool: { value: 0 }, uRimK: { value: 1 }, uHutSh: { value: new THREE.Vector4() }, uHutL: { value: new THREE.Vector2(1, 1) }, uPackPos: { value: new THREE.Vector3(...C) },
     uFires: U.uFires, uFireT: U.uFireT, uPiles: U.uPiles, uPileT: U.uPileT, uBurn: U.uBurn, uObj: { value: [0, 1, 2].map(() => new THREE.Vector4()) },
-    uPileK: { value: 1 }, uFieldN: { value: 0 },
+    uPileK: { value: 1 }, uFieldN: { value: 0 }, uSink: { value: 0 },
   };
   function points(count, seed, place, vert, frag = SOFT, blending = THREE.AdditiveBlending) {
     const r = rng(seed), pos = new Float32Array(count * 3), sd = new Float32Array(count * 4);
@@ -373,7 +372,7 @@ function build(canvas, renderer, tier) {
       const x = P.getX(i), z = P.getZ(i), k = smooth(-30, -37, z), v = 0.85 + r() * 0.3;
       P.setY(i, groundH(x, z) + r() * 0.06);
       cols.push((0.72 * (1 - k) + 0.15 * k) * v, (0.5 * (1 - k) + 0.11 * k) * v, (0.24 * (1 - k) + 0.1 * k) * v);
-      field.push(0.44 * v, 0.31 * v, 0.19 * v);  // bare dry soil and chaff between the rows
+      field.push(0.7 * v, 0.48 * v, 0.24 * v);  // v1's straw-gold ground under the blades
     }
     g.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3)); g.setAttribute('aField', new THREE.Float32BufferAttribute(field, 3));
     g.computeVertexNormals();
@@ -381,24 +380,26 @@ function build(canvas, renderer, tier) {
     // own haze below: on Low three fogs after tone mapping (a dark band under the ridges)
     const gm = lambert(0xffffff, { vertexColors: true, flatShading: true, fog: false });
     gm.onBeforeCompile = (s) => {
-      Object.assign(s.uniforms, { uCityGround: U.uCityGround, uDrop: U.uDrop, uHaze: { value: scene.fog.color }, uFires: U.uFires, uFireT: U.uFireT, uPiles: U.uPiles, uPileT: U.uPileT, uBurn: U.uBurn, uChar: bladeU.uChar, uFireAmt: bladeU.uFireAmt, uRows: bladeU.uRows, uT: U.uT });
+      Object.assign(s.uniforms, { uCityGround: U.uCityGround, uDrop: U.uDrop, uHaze: { value: scene.fog.color }, uFires: U.uFires, uFireT: U.uFireT, uPiles: U.uPiles, uPileT: U.uPileT, uBurn: U.uBurn, uChar: bladeU.uChar, uFireAmt: bladeU.uFireAmt, uT: U.uT });
       s.vertexShader = 'attribute vec3 aField; uniform float uCityGround, uDrop; varying float vGH; varying vec3 vWP;\n' + s.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\ntransformed.y -= uDrop * 12.0 * (1.0 - smoothstep(-50.0, -46.0, transformed.z));\nvWP = transformed;').replace('#include <color_vertex>', '#include <color_vertex>\nvColor.rgb = mix(aField, vColor.rgb, uCityGround);')
         .replace('#include <fog_vertex>', '#include <fog_vertex>\nvGH = mix(min(0.95, smoothstep(8.0, 46.0, -mvPosition.z) * 0.55 + smoothstep(36.0, 80.0, -mvPosition.z) * 0.4 + smoothstep(-22.0, -34.0, transformed.z) * 0.95), smoothstep(2.0, 32.0, -mvPosition.z) * 0.92, uCityGround);');
       // the bare ground past the blades fades to the same haze as the far blades
       // before tone mapping, like the ridges and blades
-      s.fragmentShader = 'varying float vGH; varying vec3 vWP; uniform vec3 uHaze; uniform float uChar, uFireAmt, uRows, uCityGround, uT;\n' + NOISE + FIRE + s.fragmentShader.replace('#include <tonemapping_fragment>', GROUND_FX + 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');
+      s.fragmentShader = 'varying float vGH; varying vec3 vWP; uniform vec3 uHaze; uniform float uChar, uFireAmt, uCityGround, uT;\n' + NOISE + FIRE + s.fragmentShader.replace('#include <tonemapping_fragment>', GROUND_FX + 'gl_FragColor.rgb = mix(gl_FragColor.rgb, uHaze, vGH);\n#include <tonemapping_fragment>');
     };
     mesh(g, gm);
   }
 
+  let blades;
   // Field: thin tapered straw blades, BLADES x density, placed from rng(3); sway and light are in BLADE_V.
   {
     // then straw heaped on the piles (lying every which way over the mound)
-    const field = small ? 18000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
+    // Low (no post, so no bloom to fill the gaps) gets more, wider blades than density 1: the field must read full there too
+    const BLADE_W = tier.name === 'low' ? 0.04 : 0.025, field = small ? 30000 : tier.name === 'low' ? 45000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
     bladeU.uFieldN.value = field;                     // instances from here on are the straw heaped on the piles
     const g = new THREE.BufferGeometry();
     // thin, tapering
-    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.24, 0.55, 0, 0.24, 0.55, 0, 0, 1, 0], 3));
+    g.setAttribute('position', new THREE.Float32BufferAttribute([-0.5, 0, 0, 0.5, 0, 0, -0.32, 0.5, 0, 0.32, 0.5, 0, 0, 1, 0], 3));
     g.setIndex([0, 1, 2, 1, 3, 2, 2, 3, 4]);
     const mat = new THREE.ShaderMaterial({
       uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), ...bladeU }, vertexShader: BLADE_V, fragmentShader: BLADE_F,
@@ -407,20 +408,18 @@ function build(canvas, renderer, tier) {
     const im = new THREE.InstancedMesh(g, mat, count);
     d.rotation.order = 'YXZ';                         // tilt (x), then turn (y): lying straw points any way
     for (let i = 0; i < field; i++) {
-      // phones (portrait, narrow view) get their straw where the camera looks, and none right at the lens
-      let z = (small ? 7.5 : 10) - r() * (small ? 41.5 : 44), x = (r() - 0.5) * (small ? 6 + 0.7 * (10 - z) : 52);
-      const kind = r();
-      let h, wd, tilt = (r() - 0.5) * 0.5, lie = false;
-      if (z > 3 && kind < 0.18) { h = 0.45 + r() * 0.4; wd = 0.03 + r() * 0.02; }  // a few long clumps up front, for depth
-      else if (kind < 0.62) {                         // cut stubble: short stalks in hills along the harvest rows
-        x = Math.round(x / ROW) * ROW + (r() - 0.5) * 0.07; z = Math.round(z / HILL) * HILL + (r() - 0.5) * 0.07;
-        h = 0.1 + r() * 0.18; wd = (small ? 0.03 : 0.018) + r() * 0.012;
-      // loose straw lying between the rows
-      } else { lie = true; h = 0.3 + r() * 0.45; wd = (small ? 0.045 : 0.025) + r() * 0.02; tilt = Math.PI / 2 - 0.12 + (r() - 0.5) * 0.2; }
-      d.position.set(x, groundH(x, z) + (lie ? 0.015 : -0.02), z);
-      d.rotation.set(tilt, r() * 6.28, (r() - 0.5) * 0.3);
-      d.scale.set(wd, h, 1);
-      d.updateMatrix(); im.setMatrixAt(i, d.matrix);
+      // v1's field: tall golden straw everywhere, swaying in the wind; phones (portrait, narrow view) get theirs where
+      // the camera looks; none in the hut's footprint (none at the lens: BLADE_V)
+      let x, z;
+      do {
+        z = (small ? 7.5 : 10) - r() * (small ? 41.5 : 44);
+        x = (r() - 0.5) * (small ? 6 + 0.7 * (10 - z) : 52);
+      } while (Math.abs(x - HUT[0]) < 1.6 * HUT_S && Math.abs(z - HUT[2]) < 1.4 * HUT_S);
+      d.position.set(x, groundH(x, z) - 0.02, z);
+      d.rotation.set((r() - 0.5) * 0.45, r() * 6.28, (r() - 0.5) * 0.45);
+      d.scale.set(BLADE_W + r() * 0.03, 0.3 + r() * r() * 0.55, 1);
+      d.updateMatrix();
+      im.setMatrixAt(i, d.matrix);
     }
     for (let i = field; i < count; i++) {
       const [px, pz, R, H] = PILES[i < field + perPile ? 0 : 1], k = Math.sqrt(r()) * 0.95, a = r() * 6.28;
@@ -433,6 +432,7 @@ function build(canvas, renderer, tier) {
     }
     im.frustumCulled = false;                         // blades bend in the shader
     scene.add(im);
+    blades = im;
   }
 
   // A broken tree line at the far edge of the field, hazed by the fog; it sinks away before the cafe.
@@ -560,7 +560,7 @@ function build(canvas, renderer, tier) {
   })();
   if (small) {
     U.uTW.value = 0.55;
-    U.uTH.value = 1.45;
+    U.uTH.value = 1.8;
   }
   const embers = points(small ? 120 : Math.round(500 * Math.sqrt(tier.density)), 6, onFire, EMBER);  // x density reads as glitter
   embers.renderOrder = 1;                             // drawn after the smoke, so it glows through
@@ -1076,6 +1076,9 @@ function build(canvas, renderer, tier) {
       piles[i].visible = k > 0.01;
     });
     bladeU.uPileK.value = 1 - smooth(0.5, 0.7, q);
+    // the field sinks away as the city rises, so no tall straw stands in front of the terrace
+    bladeU.uSink.value = smooth(0.78, 0.9, q);
+    blades.visible = q < 0.9;
     pileRim.value.copy(sun.color).multiplyScalar(0.8 * sunW * (1 - P.smoke));
     cafeLight.intensity = 5 * P.city;
     tableSpot.intensity = 0.45 * P.city;
@@ -1088,7 +1091,6 @@ function build(canvas, renderer, tier) {
     U.uCityGround.value = smooth(0.6, 0.8, q);
     bladeU.uChar.value = smooth(0.19, 0.22, q) * (1 - smooth(0.5, 0.6, q));  // the char itself spreads with the fronts (FIRE)
     bladeU.uCool.value = cool;
-    bladeU.uRows.value = 0.6 * sunW + 0.25 * glow;
     bladeU.uRimK.value = (post ? 1.7 : 1) * (small ? 0.5 : 1) * (1 + 0.8 * sunW);  // backlit gold stubble while the sun is up
     // the hut casts a long shadow toward the camera from the low sun (blades and ground)
     const shx = -sunDir.x, shz = -sunDir.z, shn = Math.hypot(shx, shz), shL = Math.min(30, 2.8 * HUT_S / Math.max(sunDir.y, 0.09)), shA = 0.6 * sunW * (1 - P.smoke);
