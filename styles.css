@@ -329,6 +329,8 @@ dialog .btn { width: 100%; }
 .line { font-size: var(--text-lg); }
 .sep { color: var(--color-muted); }
 .product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-lg); }
+/* the photo fills the card top edge to edge, inside its 1px border; its cream plate is baked into the image */
+.product-photo { width: calc(100% + 2 * var(--space-lg)); max-width: none; aspect-ratio: 1; margin: calc(-1 * var(--space-lg)) calc(-1 * var(--space-lg)) var(--space-2xs); border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0; background: oklch(93% 0.025 80); }
 .product .field { margin: 0; }
 .product .field input { max-width: 8rem; }
 .check { display: grid; gap: var(--space-3xs); }
