@@ -20,7 +20,7 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
   bool soft = aSeed.y > 0.9;  // one in ten: big, faint, out of focus
-  gl_PointSize = soft ? min(psize(0.12 + aSeed.w * 0.1, mv), 16.0 * uPR) : min(psize(0.025 + aSeed.w * 0.045, mv), 5.0 * uPR);
+  gl_PointSize = soft ? min(psize(0.12 + aSeed.w * 0.1, mv), 16.0 * uPR) : min(psize(0.05 + aSeed.w * 0.07, mv), 9.0 * uPR);
   float back = pow(max(dot(normalize((modelMatrix * vec4(p, 1.0)).xyz - cameraPosition), uSunDirW), 0.0), 6.0);
   vA = uDust * (0.04 + 2.0 * back) * (soft ? 0.25 : 1.0) * (0.35 + 0.65 * (0.5 + 0.5 * sin(uT * 1.3 + aSeed.x * 40.0))) * smoothstep(1.5, 5.0, -mv.z);
   vC = mix(vec3(0.9, 0.5, 0.22), vec3(1.0, 0.68, 0.36), back);  // only where it catches the sun
@@ -72,7 +72,8 @@ void main() {
   if (j < 5) {
     vec2 xz = fPoint(j, aT.y, age, amt);
     b = vec3(xz.x, gH(xz) - 0.05, xz.y);
-    H = uTH * (0.3 + 0.7 * aT.z * aT.z) * (1.0 - 0.3 * smoothstep(0.3, 1.2, age));  // many small tongues, a few tall
+    float sL = aT.y * length(uFires[j].zw - uFires[j].xy), env = 0.45 + 0.75 * (0.5 + 0.5 * sin(sL * 0.9 + float(j) * 2.1)) * (0.6 + 0.4 * sin(sL * 0.31 + float(j)));  // the line rises and falls 2-3x along its length
+    H = uTH * env * (0.3 + 0.7 * aT.z * aT.z) * (1.0 - 0.3 * smoothstep(0.3, 1.2, age));  // many small tongues, a few tall
     W = uTW * (0.7 + 0.6 * aT.w);
   } else {
     int i = j - 5; vec4 P = uPiles[i]; float r = sqrt(fract(aT.w * 7.31)) * 0.8, an = aT.y * 6.2832;
@@ -142,7 +143,10 @@ void main() {
 // Straw blades (InstancedMesh, local blade 0..1 tall): wind bend from a rolling gust and a per-blade flutter, both
 // pure in t and position. Lit by the sun (backlit tips glow), the fire lines, the packaging glow; haze far away.
 export const BLADE_V = /* glsl */`
-uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uSmall; uniform vec3 uSunDir, uSunCol, uAmb, uPackPos; uniform vec4 uObj[3], uHutSh; uniform vec2 uHutL;
+uniform float uT, uFireAmt, uPack, uChar, uCool, uRimK, uSmall, uPileK, uFieldN;
+uniform vec3 uSunDir, uSunCol, uAmb, uPackPos;
+uniform vec4 uObj[3], uHutSh;
+uniform vec2 uHutL;
 varying vec3 vCol; varying float vHaze;
 ${FIRE}
 #include <fog_pars_vertex>
@@ -172,6 +176,7 @@ void main() {
   }
   float dist = length(cameraPosition - base);
   w = base + (w - base) * (1.0 - 0.8 * uChar * burnt * step(base.y, 0.12)) * (1.0 - inPile) * smoothstep(1.2, 3.6, dist);  // burnt to stubs; none right at the lens
+  if (float(gl_InstanceID) > uFieldN - 0.5) w.y = gH(base.xz) + (w.y - gH(base.xz)) * uPileK;  // the piles' straw sinks with them
   float gust = 0.5 + 0.5 * sin(uT * 0.9 - base.x * 0.18 + base.z * 0.11);
   float sway = ((0.08 + 0.26 * gust) + 0.07 * sin(uT * 3.1 + s * 6.28 + base.x * 0.7)) * pow(max(normalize(m[1].xyz).y, 0.0), 2.0);  // lying straw stays put
   w.x += h * h * H * sway; w.z -= h * h * H * sway * 0.3; w.y -= h * h * H * sway * sway * 0.5;
@@ -235,7 +240,7 @@ void main() {
   // thin right at the fire line, densest a little above it, thinning as it climbs, faded right at the lens
   vA = uS * (1.0 - 0.55 * uClear) * uSmokeA * smoothstep(-0.02, uFoot, hf) * (1.0 - 0.6 * hf) * smoothstep(2.0, 7.0, -mv.z);
   vC = mix(uSmokeLow, uSmokeHigh, smoothstep(0.05, 0.5, hf));
-  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.5, hf)) * col.w;
+  vF = uSmokeFire * (1.0 - smoothstep(0.02, 0.25, hf)) * col.w;
   vA *= (0.45 + 0.9 * fract(aSeed.w * 7.7 + aSeed.x * 3.1)) * col.w;  // some puffs dense, some thin
   vRot = aSeed.z * 6.28 + uT * (0.04 + 0.06 * aSeed.x) * (aSeed.y > 0.5 ? 1.0 : -1.0);
 }`;
@@ -256,63 +261,68 @@ void main() {
   #include <tonemapping_fragment>
 }`;
 
-// Fibres: each one is a thin straw piece plus a short trail from where it was a moment ago (same curve at an earlier
-// fold and t), both lying along its motion. They lift off the stubble and are drawn up one S-curved ribbon toward the
-// spot where the packaging forms, then settle into the box, bowl and cup. Normal blending, so they stay straw gold.
+// Fibres: each one is a long thin strip (position.x: side -1/1, position.y: 0 at its head to 1 at its tail) traced back
+// along its own path: the tail is where the head was a little earlier in the fold, so a straw follows the flow and bends
+// with it. They lift off the stubble front left, rise in an S-curve (right, back up left, then right) to above the spot
+// where the packaging forms, then settle into the box, bowl and cup. Width in pixels, tapered to the tail.
 export const FIBRE = /* glsl */`
-attribute vec3 aStart; uniform float uFold, uFibA, uFibOut, uFibSize, uSurf, uLift, uLiftK; uniform vec3 uC;
-varying float vA, vAng, vMot, vTail, vBody, vShade, vNear, vPx, vTh; varying vec3 vFC;
-vec3 bez(vec3 a, vec3 b, vec3 c, vec3 d, float k) { float m = 1.0 - k; return m * m * m * a + 3.0 * m * m * k * b + 3.0 * m * k * k * c + k * k * k * d; }
+attribute vec3 aStart, aEnd;
+attribute vec4 aSeed;
+uniform float uT, uScale, uFold, uFibA, uFibOut, uSurf, uLift, uLiftK;
+uniform vec3 uSpine[5], uStartOff;
+varying float vA, vSide, vW, vShade, vTail; varying vec3 vFC;
+vec3 cr(vec3 a, vec3 b, vec3 c, vec3 d, float t) { return 0.5 * (2.0 * b + (c - a) * t + (2.0 * a - 5.0 * b + 4.0 * c - d) * t * t + (3.0 * b - a - 3.0 * c + d) * t * t * t); }
+// the ribbon's spine through uSpine (world, set per screen shape): off the stubble, a low lobe right, back up left, up
+// right, and a curl back over the forming spot
+vec3 spine(float k) {
+  float f = clamp(k, 0.0, 1.0) * 4.0;
+  int i = int(min(floor(f), 3.0));
+  return cr(uSpine[max(i - 1, 0)], uSpine[i], uSpine[i + 1], uSpine[min(i + 2, 4)], f - float(i));
+}
 vec3 at(float fold, float t) {
   float u = clamp((fold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), k = clamp((u - 0.12) / 0.7, 0.0, 1.0);  // staggered: some still lifting while others land
-  // the ribbon: from the stubble front-left, up and across, back over to above the forming spot
-  vec3 s = bez(uC + vec3(-2.4, -2.35, 2.0), uC + vec3(-4.4, 1.7, -0.8), uC + vec3(3.4, 1.5, 0.6), uC + vec3(0.0, -1.3, -0.1), k);  // it leaves the stubble itself
-  float wid = 0.22 + 0.66 * smoothstep(0.0, 0.55, k) * (1.0 - 0.7 * smoothstep(0.7, 1.0, k));  // a patch lifting off the field, full in the middle, gathering at the end
+  vec3 s = spine(k);
+  float wid = 0.14 + 0.3 * smoothstep(0.0, 0.4, k) * (1.0 - 0.7 * smoothstep(0.7, 1.0, k));  // loose where it leaves the ground, a sheaf in the middle, gathered at the end
   vec3 j = vec3(fract(aSeed.z * 13.1) + fract(aSeed.y * 3.7), fract(aSeed.z * 7.9) + fract(aSeed.w * 5.1), fract(aSeed.z * 5.3) + fract(aSeed.x * 9.3)) - 1.0;  // denser at the core
-  s += j * wid * (1.0 + 1.0 * step(fract(aSeed.z * 31.7), 0.06)) + vec3(0.0, sin(k * 9.0 - t * 1.2 + aSeed.y * 6.28) * 0.06, 0.0);  // a few strays; a slow ripple
+  s += j * wid * (1.0 + 1.2 * step(fract(aSeed.z * 31.7), 0.06)) + vec3(0.0, sin(k * 9.0 - t * 1.2 + aSeed.y * 6.28) * 0.07, 0.0);  // a few strays; a slow ripple
   float lift = smoothstep(0.0, 0.14, u), land = smoothstep(0.82, 1.0, u);
-  vec3 p = mix(mix(aStart, s, lift), position, land);
+  vec3 p = mix(mix(aStart + uStartOff, s, lift), aEnd, land);
   p.y += uLift * (0.15 + 0.85 * fract(aSeed.w * 9.7));  // with the lifted pieces: the trailing straws hang below them
   p.y += (1.0 - lift) * 0.03 * sin(t * 1.5 + aSeed.w * 30.0);
   return p;
 }
 void main() {
-  float u = clamp((uFold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
-  mat4 pm = projectionMatrix * modelViewMatrix;
-  vec4 c1 = pm * vec4(at(uFold, uT), 1.0), c0 = pm * vec4(at(uFold - 0.02, uT - 0.1), 1.0);
-  if (c1.w < 0.05) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); gl_PointSize = 0.0; vA = 0.0; return; }  // at or behind the lens
-  gl_Position = c1;
-  vNear = smoothstep(5.0, 1.5, c1.w);  // the closest fibres go soft, like a shallow focus
   float r1 = fract(aSeed.w * 13.7 + aSeed.x * 3.1), r2 = fract(aSeed.y * 9.1 + aSeed.w * 2.3), r3 = fract(aSeed.z * 5.9 + aSeed.y * 1.7);
-  float body = (0.5 - 0.2 * e + 0.15 * w) * (0.55 + 0.9 * r1) * uFibSize * uScale / c1.w;  // straws of many lengths
-  vec2 d = c0.w > 0.0 ? (c1.xy / c1.w - c0.xy / c0.w) * vec2(projectionMatrix[1][1] / projectionMatrix[0][0], 1.0) * uScale / projectionMatrix[1][1] : vec2(0.0);
-  float L = min(length(d), 0.018 * uScale), S = max(body, 2.0 * L + 2.0);  // the trail fits behind the centre; capped (each fibre is an S x S quad: fill cost)
-  gl_PointSize = S;
-  vPx = 1.0 / S; vTh = 0.6 + 0.8 * r2;
-  vFC = r3 < 0.5 ? mix(vec3(1.0, 0.68, 0.3), vec3(0.78, 0.56, 0.34), r3 * 2.0) : mix(vec3(0.78, 0.56, 0.34), vec3(0.95, 0.86, 0.64), r3 * 2.0 - 1.0);  // gold, tan, bleached
-  vBody = body / S; vTail = L / S; vMot = atan(-d.y, d.x);  // point y runs down
+  float a = position.y, span = 0.012 + 0.02 * r1;  // straws of many lengths, about 0.5 to 1.4 m in flight
+  float u = clamp((uFold - aSeed.x * 0.6) / 0.4, 0.0, 1.0), lift = smoothstep(0.0, 0.14, u), e = u * u * (3.0 - 2.0 * u), w = 4.0 * e * (1.0 - e);
+  vec3 lie = vec3(cos(aSeed.w * 6.28), 0.0, sin(aSeed.w * 6.28)) * 0.3 * (1.0 - lift);  // before it lifts: a short straw lying in the stubble
+  vec3 p0 = at(uFold - a * span, uT - a * 0.25) + lie * a;
+  vec3 p1 = at(uFold - (a + 0.05) * span, uT - (a + 0.05) * 0.25) + lie * (a + 0.05);
+  mat4 pm = projectionMatrix * modelViewMatrix;
+  vec4 c0 = pm * vec4(p0, 1.0), c1 = pm * vec4(p1, 1.0);
+  if (c0.w < 0.05 || c1.w < 0.05) { gl_Position = vec4(0.0, 0.0, 2.0, 1.0); vA = 0.0; return; }  // at or behind the lens
+  vec2 px = vec2(projectionMatrix[0][0], projectionMatrix[1][1]) / uScale;  // one pixel in NDC
+  vec2 dir = (c1.xy / c1.w - c0.xy / c0.w) / px;
+  vec2 nrm = length(dir) > 1e-4 ? normalize(vec2(-dir.y, dir.x)) : vec2(0.0, 1.0);
+  float wpx = 0.016 * (0.7 + 0.6 * r2) * uScale / c0.w * pow(1.0 - a, 0.8) * (0.55 + 0.45 * smoothstep(0.0, 0.1, a));  // tapered, blunt at the head
+  vW = wpx;
+  vSide = position.x;
+  gl_Position = c0 + vec4(nrm * position.x * (0.5 * max(wpx, 1.0) + 0.75) * px * c0.w, 0.0, 0.0);  // never under a pixel; a little more for soft edges
+  vTail = a;
+  vFC = r3 < 0.6 ? mix(vec3(1.0, 0.6, 0.22), vec3(0.8, 0.5, 0.24), r3 / 0.6) : mix(vec3(0.8, 0.5, 0.24), vec3(0.95, 0.76, 0.46), (r3 - 0.6) / 0.4);  // gold, tan, pale gold
   float tr = step(fract(aSeed.y * 17.3), 0.03);  // a few straws trail the presented pieces
-  vec4 wp = modelMatrix * vec4(at(uFold, uT), 1.0);
-  vA = uFibA * smoothstep(0.0, 0.05, u) * (0.6 + 0.4 * smoothstep(0.02, 0.25, e)) * (1.0 - 0.75 * smoothstep(0.86, 1.0, u) * (1.0 - tr)) * (0.75 + 0.25 * w) * (1.0 - uSurf * (1.0 - tr * uLiftK)) * (1.0 - uFibOut) * (1.0 - 0.6 * vNear) * (1.0 - 0.55 * step(fract(aSeed.z * 31.7), 0.06));  // near opaque in flight (strays fainter), faint on the ground, gone once the surface fills in
-  vShade = (0.7 + 0.45 * fract(aSeed.w * 7.13)) * (0.72 + 0.4 * smoothstep(0.2, 3.0, wp.y));  // darker low by the stubble, brighter up toward the sky
-  vAng = aSeed.w * 6.28 + e * 4.0;
+  vA = uFibA * smoothstep(0.0, 0.05, u) * (0.6 + 0.4 * smoothstep(0.02, 0.25, e)) * (1.0 - 0.75 * smoothstep(0.86, 1.0, u) * (1.0 - tr)) * (0.75 + 0.25 * w);
+  vA *= (1.0 - uSurf * (1.0 - tr * uLiftK)) * (1.0 - uFibOut) * (1.0 - 0.55 * step(fract(aSeed.z * 31.7), 0.06)) * min(wpx, 1.0);  // gone once the surface fills in; thinner than a pixel fades
+  vShade = (0.7 + 0.4 * fract(aSeed.w * 7.13)) * (0.7 + 0.35 * smoothstep(0.2, 3.0, (modelMatrix * vec4(p0, 1.0)).y));  // darker low by the stubble, brighter up against the sky
 }`;
 
 export const FIBRE_F = /* glsl */`
-uniform vec3 uFibCol; varying float vA, vAng, vMot, vTail, vBody, vShade, vNear, vPx, vTh; varying vec3 vFC;
+uniform vec3 uFibCol; varying float vA, vSide, vW, vShade, vTail; varying vec3 vFC;
 void main() {
-  vec2 c = gl_PointCoord - 0.5;
-  float ang = vTail > 0.02 ? vMot : vAng;  // in flight a straw lies along its path (no crossing jacks)
-  float s = sin(ang), k = cos(ang), th = max(0.04 * vBody * vTh * (1.0 + 1.5 * vNear), 0.6 * vPx);  // thin, but never under a pixel (no jaggies)
-  vec2 r = mat2(k, -s, s, k) * c;
-  float body = smoothstep(th + vPx, max(th - vPx, 0.0), abs(r.y)) * smoothstep(0.48 * vBody, 0.3 * vBody, abs(r.x));
-  s = sin(vMot); k = cos(vMot);
-  vec2 m = mat2(k, -s, s, k) * c;  // m.x along the motion; the trail lies behind (m.x < 0)
-  float g = clamp(-m.x / max(vTail, 1e-3), 0.0, 1.0);
-  float tail = vTail > 0.02 ? (1.0 - g) * (1.0 - g) * step(m.x, 0.0) * step(g, 0.999) * smoothstep(th * 0.9, 0.0, abs(m.y)) : 0.0;
-  float a = vA * max(body, tail * 0.5);
+  float d = abs(vSide) * (0.5 * max(vW, 1.0) + 0.75);
+  float a = vA * clamp(0.5 * max(vW, 1.0) + 0.5 - d, 0.0, 1.0);  // pixel coverage across the strand
   if (a < 0.003) discard;
-  gl_FragColor = vec4(vFC * uFibCol.r * vShade * (0.7 + 0.5 * smoothstep(th, -th, r.y)), a);  // lit on top, darker underneath
+  gl_FragColor = vec4(vFC * uFibCol.r * vShade * (0.8 + 0.35 * (1.0 - vTail)), a);  // the head catches the light, the tail trails darker
 }`;
 
 export const TRAIL = /* glsl */`
@@ -377,11 +387,11 @@ void main() {
 }`;
 
 export const STARS = /* glsl */`
-uniform float uStars, uPR; varying float vA; varying vec3 vC;
+uniform float uStars, uPR, uCity; varying float vA; varying vec3 vC;
 void main() {
   gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   gl_PointSize = (1.0 + aSeed.x * 1.8) * uPR;
-  vA = uStars * (0.4 + 0.6 * aSeed.y) * (0.7 + 0.3 * sin(uT * (1.0 + aSeed.z * 2.0) + aSeed.w * 30.0));
+  vA = uStars * (0.4 + 0.6 * aSeed.y) * (0.7 + 0.3 * sin(uT * (1.0 + aSeed.z * 2.0) + aSeed.w * 30.0)) * mix(step(0.97, aSeed.y) * 1.6, 1.0, uCity);  // at dusk only a few clear stars, not a speckle
   vC = vec3(0.9, 0.93, 1.0);
 }`;
 
@@ -392,7 +402,7 @@ void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix 
 // Sky: coral away from the sun, gold toward it, mauve, then dusk blue overhead. The broad glow hugs the horizon
 // around the sun (kept narrow so the hero heading, left of it, sits on calmer sky); the disc is HDR so it blooms.
 export const SKY_F = /* glsl */`
-uniform vec3 uHorizon, uCoral, uMid, uZenith, uSunDir, uSunCol, uGlow, uCloudCol; uniform float uSunAmt, uDisc, uCity, uCloud, uCityGlow, uSmother, uSmokeSky, uT; varying vec3 vDir;
+uniform vec3 uHorizon, uCoral, uMid, uZenith, uSunDir, uSunCol, uGlow, uCloudCol; uniform float uSunAmt, uDisc, uCity, uCloud, uCityGlow, uSmokeSky, uT; uniform vec3 uSmokeSun, uSmokeDark; varying vec3 vDir;
 ${NOISE}
 void main() {
   vec3 d = normalize(vDir);
@@ -401,16 +411,24 @@ void main() {
   vec3 col = mix(uCoral, uHorizon, near);
   col = mix(col, uMid, smoothstep(0.0, 0.14, e));
   col = mix(col, uZenith, pow(smoothstep(0.04, 0.6, e), 0.75));
-  col += uSunCol * uSunAmt * (near * exp(-abs(d.y - uSunDir.y * 0.6) * 16.0) * 0.5 + pow(s, 12.0) * 0.16 + pow(s, 60.0) * 0.4 + pow(s, 900.0) * 1.1);
+  col += uSunCol * uSunAmt * (near * exp(-abs(d.y - uSunDir.y * 0.6) * 16.0) * 0.5 + pow(s, 12.0) * 0.12);
+  col += vec3(1.0, 0.4, 0.09) * uSunAmt * (pow(s, 60.0) * 0.45 + pow(s, 300.0) * 0.8);  // a saturated orange glow right round the disc, not a white haze
   // in the smoke: the sun smothered to a dim warm patch low in the haze, and slow billows in the ceiling
-  col += vec3(1.0, 0.5, 0.2) * uSmother * (pow(s, 5.0) * 0.18 + pow(s, 40.0) * 0.35);
-  float az0 = atan(d.x, -d.z), bill = n2(vec2(az0 * 3.0, e * 9.0 + uT * 0.02)) * 0.6 + n2(vec2(az0 * 8.0, e * 24.0)) * 0.4;
-  col *= 1.0 + (bill - 0.5) * 0.4 * uSmokeSky * smoothstep(0.04, 0.3, e);
+  // in the smoke: dense, dark, warped billows drifting sideways over the upper sky, and a red sun burning through them
+  float az0 = atan(d.x, -d.z);
+  vec2 bq = vec2(az0 * 2.4 - uT * 0.012, e * 7.0);
+  bq += vec2(n2(bq * 1.7 + 4.1), n2(bq * 1.7 + 9.3)) * 0.8 - 0.4;
+  float bill = n2(bq) * 0.55 + n2(bq * 2.3 + 1.3) * 0.3 + n2(bq * 5.1 + 7.7) * 0.15;
+  float thick = uSmokeSky * smoothstep(0.0, 0.1, e) * smoothstep(0.2, 0.6, bill + 0.15);
+  col = mix(col, uSmokeDark * (0.7 + 0.6 * bill), thick * 0.85);
+  float ss = max(dot(d, uSmokeSun), 0.0), veil = 1.0 - 0.55 * thick;
+  col += vec3(1.0, 0.28, 0.04) * uSmokeSky * veil * (pow(ss, 20.0) * 0.4 + pow(ss, 200.0) * 1.0);
+  col = mix(col, vec3(2.4, 0.62, 0.1), uSmokeSky * veil * smoothstep(0.99991, 0.99994, ss));
   // a few thin streaks of cloud: dusky away from the sun, their undersides gold toward it
   float az = atan(d.x, -d.z), band = smoothstep(0.07, 0.12, e) * smoothstep(0.34, 0.2, e);
   float cl = smoothstep(0.5, 0.85, n2(vec2(az * 2.2, e * 26.0)) * 0.7 + n2(vec2(az * 9.0, e * 70.0)) * 0.3) * band * uCloud;
   col = mix(col, uCloudCol + uSunCol * uSunAmt * pow(s, 8.0) * 1.6, cl * 0.75);
-  col = mix(col, mix(vec3(2.4, 1.2, 0.42), vec3(5.2, 4.3, 3.2), smoothstep(0.99976, 0.99993, s)) * uDisc, smoothstep(0.99972, 0.99978, s));  // the brightest point: near white, a warm edge
+  col = mix(col, mix(vec3(3.0, 1.7, 0.6), vec3(5.2, 4.3, 3.2), smoothstep(0.99845, 0.99905, s)), smoothstep(0.99822, 0.99858, s) * uDisc);  // a big low disc (about 3.3 degrees across): near white, a warm edge
   col += (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.006;  // dither: no banding in the long gradient
   col += uGlow * uCityGlow * exp(-e * 28.0) * smoothstep(0.2, 1.0, -d.z);  // the city's warm glow, only low over the skyline
   gl_FragColor = vec4(col, 1.0);
@@ -442,12 +460,9 @@ void main() {
   mat4 m = modelMatrix * instanceMatrix;
   vec3 c = m[3].xyz, p = position;
   float id = fract(sin(dot(c.xz, vec2(12.9898, 78.233))) * 43758.5453);
-#ifdef PALM
-  float az = atan(p.z, p.x);
-  p.xz *= 0.25 + 0.95 * pow(abs(sin(az * 4.5 + id * 6.0)), 4.0);  // a star of fronds
-  p.y = p.y * 0.35 - 0.45 * dot(p.xz, p.xz);  // drooping
-#else
-  p *= 1.0 + 0.24 * sin(p.x * 3.1 + id * 20.0) * sin(p.y * 2.6 + id * 11.0) + 0.14 * sin(p.z * 4.3 + id * 7.0) + 0.06 * sin(p.x * 9.0 + p.y * 7.0 + id * 40.0);  // lobes and leafy clumps
+#ifndef PALM
+  p *= 1.0 + 0.24 * sin(p.x * 3.1 + id * 20.0) * sin(p.y * 2.6 + id * 11.0) + 0.14 * sin(p.z * 4.3 + id * 7.0) + 0.06 * sin(p.x * 9.0 + p.y * 7.0 + id * 40.0);  // lobes
+  p *= 1.0 + 0.11 * sin(p.x * 14.0 + id * 5.0) * sin(p.y * 12.0 + p.z * 11.0 + id * 3.0) + 0.05 * sin(p.x * 31.0 + p.z * 27.0 + id * 9.0);  // leafy clumps on the silhouette
 #endif
   vec4 w = m * vec4(p, 1.0);
   vW = w.xyz; vN = normalize(mat3(m) * normal); vZ = c.z;
@@ -458,11 +473,11 @@ export const TREE_F = /* glsl */`
 uniform vec3 uHaze, uDark, uSunDir, uSunCol; uniform float uSmoke; varying vec3 vN, vW; varying float vZ;
 ${NOISE}
 void main() {
-  float far = smoothstep(-60.0, -82.0, vZ);
-  vec3 c = mix(uDark, uHaze, 0.12 + 0.55 * far) * (0.8 + 0.35 * n2(vW.xy * 2.2 + vZ)), v = normalize(cameraPosition - vW);  // foliage, not stone
-  float rim = pow(1.0 - max(dot(vN, v), 0.0), 4.0) * smoothstep(0.2, 0.8, vN.y);  // only the upper edges of the crowns
+  float far = smoothstep(-50.0, -74.0, vZ);
+  vec3 c = mix(uDark, uHaze, 0.08 + 0.45 * far) * (0.8 + 0.3 * n2(vW.xy * 16.0 + vZ) + 0.1 * n2(vW.xy * 4.0)), v = normalize(cameraPosition - vW);  // fine leafy speckle, not stone
+  float rim = pow(1.0 - abs(dot(vN, v)), 4.0) * smoothstep(0.2, 0.8, abs(vN.y)) * smoothstep(0.45, 0.9, n2(vW.xy * 22.0));  // leaves catching light on the upper edges, broken up
   float toward = pow(max(dot(-v, uSunDir), 0.0), 16.0);
-  c += uSunCol * rim * (0.05 + 0.9 * toward) * (1.0 - 0.6 * far);
+  c += uSunCol * rim * (0.03 + 0.45 * toward) * (1.0 - 0.6 * far);
   c = mix(c, uHaze, smoothstep(1.8, -0.3, vW.y) * 0.75);  // low ground mist
   gl_FragColor = vec4(mix(c, uHaze, uSmoke), 1.0);
   #include <tonemapping_fragment>

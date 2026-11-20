@@ -46,7 +46,7 @@ const GRADE = {
     float mx = max(c.r, max(c.g, c.b)), sat = (mx - min(c.r, min(c.g, c.b))) / max(mx, 1e-4);
     float keep = (1.0 - smoothstep(0.35, 1.2, l)) * (1.0 - smoothstep(0.6, 0.85, sat));  // flames, embers and lit smoke keep their colour
     c.rgb = mix(c.rgb, vec3(l) * vec3(1.04, 0.98, 0.9), 0.6 * uSmoke * keep);    // fire and smoke drain the colour to grey
-    c.rgb = mix(c.rgb, vec3(0.46, 0.4, 0.36), 0.22 * uSmoke * keep);              // haze
+    c.rgb = mix(c.rgb, vec3(0.3, 0.27, 0.25), 0.22 * uSmoke * keep);               // haze (smoke-dark, not milky)
     vec3 p3 = fract(vec3(gl_FragCoord.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33);
     c.rgb *= 1.0 + (fract((p3.x + p3.y) * p3.z) - 0.5) * 0.012;                    // dither: no stepped gradients after tone mapping
     gl_FragColor = c;

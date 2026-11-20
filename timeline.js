@@ -25,18 +25,18 @@ export function sceneAt(p) {
 const KEYS = [
   [0, 1.7, 9, 1.5, 2.4, -30],       // low in the stubble, facing the sunset
   [-2.5, 3.2, 2, 1, 2.2, -24],      // rising as the fires start
-  [1.2, 3.6, -3.5, 1.7, 2.4, -16],  // above the field, smoke gone, straw lifting; low enough to keep the horizon, the hut at the frame edge
-  [-0.43, 0.79, -12.32, -0.87, 0.86, -14.52], // low in the stubble, the packaging floating just above chest height, up and right of the caption
+  [1.2, 3.66, -3.5, 4.36, 2.39, -15.7],  // above the field, smoke gone, straw lifting; turned right so the hut sits whole in the frame at p 0.6
+  [-0.43, 0.78, -12.32, -1.11, 0.86, -14.55], // (re-solved with key 2 so p 0.72 is unchanged) low in the stubble, the packaging floating just above chest height, up and right of the caption
   [0, 1.06, -41.3, 0, 0.88, -42.8],   // low and close: the small table fills the lower half, the city and the festoon above
 ];
 // Portrait screens see a narrow slice: the hut turned into the right third, the packaging and the whole café table
 // pulled back so they fit, the table low in the frame under the doors.
 const KEYS_TALL = [
-  [0, 1.7, 9, 10, 10.5, -30],      // tilted up: the sky behind the copy, the sun low behind the buttons (short screens too), the hut and field below
-  [-2, 2.4, 0, -2.4, 4, -24],       // the two nearest smoke columns in the centre of the narrow frame
-  [1, 3.2, -3.5, -0.8, 3, -16],
-  [-0.1, 0.92, -10.61, 0.06, 0.32, -12.83],  // low, the floating pieces in the upper half above the caption
-  [0, 1.08, -41.05, 0, 0.99, -42.55],  // close on the table (lower half), the lit skyline in the band between the buttons and the railing
+  [2.31, 1.43, 5.88, 6.82, 4.94, -22.19], // close on the hut (a third of the width) with the big sun over the hills; horizon at 57%
+  [2.55, 2.59, 4.11, 10.56, 0.60, -27.14], // pulled back: the farmer, the piles and the hut in one narrow frame
+  [0.92, 3.06, -1.22, 4.28, 0.46, -19.03],
+  [-0.05, 0.93, -10.79, -0.31, 0.52, -12.58], // low, the floating pieces in the upper half above the caption (solved with key 2 for p 0.72)
+  [0.00, 1.08, -41.05, 0.00, 0.99, -42.55], // close on the table (lower half), the lit skyline in the band between the buttons and the railing
 ];
 
 function catmull(a, b, c, d, u) {
