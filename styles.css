@@ -52,8 +52,8 @@
   --text-section: clamp(2rem, 2.5vw + 1rem, 3.5rem);
   --text-display: clamp(2.75rem, 5vw + 1rem, 5.25rem);
 
-  --container: 76rem;
-  --gutter: 64px;
+  --container: 96rem;                    /* large screens use the width; reading measures stay capped (65ch, 44rem) */
+  --gutter: clamp(64px, 5vw, 128px);
   --section-gap: 144px;
   --header-h: 4.5rem;
   --tap: 2.75rem;
@@ -328,7 +328,7 @@ dialog .btn { width: 100%; }
 .piece { font-size: var(--text-xl); }
 .line { font-size: var(--text-lg); }
 .sep { color: var(--color-muted); }
-.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-lg); }
+.product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 18.5rem), 1fr)); gap: var(--space-lg); }
 /* the photo fills the card top edge to edge, inside its 1px border; its cream plate is baked into the image */
 .product-photo { width: calc(100% + 2 * var(--space-lg)); max-width: none; aspect-ratio: 1; margin: calc(-1 * var(--space-lg)) calc(-1 * var(--space-lg)) var(--space-2xs); border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0 0; background: oklch(93% 0.025 80); }
 .product .field { margin: 0; }
