@@ -362,22 +362,6 @@ void main() {
   gl_FragColor = vec4(vFC * uFibCol.r * vShade * (0.8 + 0.35 * (1.0 - vTail)), a);  // the head catches the light, the tail trails darker
 }`;
 
-export const TRAIL = /* glsl */`
-uniform vec3 uFA[3], uFM[3], uFE[3], uFP; varying float vA; varying vec3 vC;
-void main() {
-  int i = int(aSeed.x * 2.99);
-  float e0 = uFP[i], e = max(e0 - aSeed.y * 0.14, 0.0);
-  vec3 p = (1.0 - e) * (1.0 - e) * uFA[i] + 2.0 * e * (1.0 - e) * uFM[i] + e * e * uFE[i];
-  p += (vec3(aSeed.z, fract(aSeed.z * 7.3), fract(aSeed.w * 5.1)) - 0.5) * (0.15 + aSeed.y * 0.6);
-  p.y += 0.25;
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_Position = projectionMatrix * mv;
-  gl_PointSize = psize(0.16 * (1.0 - aSeed.y * 0.6), mv);
-  vA = (1.0 - aSeed.y) * smoothstep(0.0, 0.03, e0) * (1.0 - smoothstep(0.85, 1.0, e0)) * (0.6 + 0.4 * sin(uT * 6.0 + aSeed.w * 30.0));
-  vA *= smoothstep(1.5, 4.0, -mv.z);  // none right at the lens (they bloomed into a white cloud as the camera passed the pieces)
-  vC = vec3(1.0, 0.78, 0.42);
-}`;
-
 export const GLOW = /* glsl */`
 attribute vec3 aCol; uniform float uLantern, uBulbs, uHalo; varying float vSoft; varying float vA; varying vec3 vC;
 void main() {

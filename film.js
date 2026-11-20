@@ -2,7 +2,7 @@
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
 // Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
 import { params, rng, counter, shouldUse3D, tooSlow, through } from './timeline.js';
-import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, TRAIL, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP, FORM, FORM_MASK, FORM_BUMP } from './shaders.js';
+import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP, FORM, FORM_MASK, FORM_BUMP } from './shaders.js';
 import { TIERS, pickTier, nextStep, parseFilmFlags } from './tiers.js';
 
 const root = document.documentElement;
@@ -105,6 +105,10 @@ const OBJ = [
 // p 0.76. HALF: half the piece's width in the field (FIELD_S), for its press front.
 const FLOW_AT = [0.68, 0.92, 1.08, 0.97, 0.97, 0.97], HALF = [0.42, 0.36, 0.24, 0.34, 0.34, 0.48];
 const PACK_NODES = ['box', 'bowl', 'cup', 'fork', 'spoon', 'chopsticks'];
+// the group's centre where it forms (before the lift) and on the table: the flight moves it from one to the other
+const mean = (k) => OBJ.reduce((a, o) => a + k(o), 0) / OBJ.length;
+const FORM_C = [0, 1, 2].map((k) => mean((o) => o.at[k]));
+const TABLE_C = [TABLE[0] + mean((o) => o.table[0]), TABLE[1], TABLE[2] + mean((o) => o.table[1])];
 // the fibre ribbon's spine (FIBRE): an S rising from the stubble to over the forming spot, placed for wide screens and,
 // since key 3 pins the portrait p 0.6 camera, again inside the narrow portrait frame (the fibres land on the pieces either way)
 const SPINE_WIDE = [[-1.7, 0.05, -12.2], [0.9, 1.3, -12.5], [-1.2, 2.6, -13.5], [1.0, 3.6, -14.2], [0.2, 2.7, -14.1]];
@@ -297,10 +301,9 @@ function build(canvas, renderer, tier) {
 
   const U = {
     uT: { value: 0 }, uScale: { value: 1 }, uPR: { value: 1 }, uDust: { value: 0 }, uFire: { value: 0 }, uEmber: { value: 0 },
-    uClear: { value: 0 }, uHot: { value: 1 }, uTA: { value: 1 }, uTW: { value: 0.32 }, uTH: { value: 1.4 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uSurf: { value: 0 }, uSpine: { value: SPINE_WIDE.map((q) => new THREE.Vector3(...q)) }, uStartOff: { value: new THREE.Vector3() },
+    uClear: { value: 0 }, uHot: { value: 1 }, uTA: { value: 1 }, uTW: { value: 0.32 }, uTH: { value: 1.8 }, uCityGround: { value: 0 }, uS: { value: 0 }, uFold: { value: 0 }, uFibA: { value: 0 }, uFibOut: { value: 0 }, uSurf: { value: 0 }, uSpine: { value: SPINE_WIDE.map((q) => new THREE.Vector3(...q)) }, uStartOff: { value: new THREE.Vector3() },
     uFlow: { value: OBJ.map(() => 0) }, uSpan: { value: 1 }, uWid: { value: 1 }, uStartK: { value: 1 }, uBranch: { value: 0 }, uAbs: { value: 0 }, uStartRef: { value: new THREE.Vector3(SPINE_WIDE[0][0], 0, SPINE_WIDE[0][2]) },
     uLantern: { value: 0 }, uBulbs: { value: 0 }, uHalo: { value: 0 }, uCity: { value: 0 }, uStars: { value: 0 }, uWin: { value: small ? 2.4 : 1 }, uLift: { value: 0 }, uLiftK: { value: 0 }, uLitF: { value: small ? 0.8 : 0.45 },
-    uFA: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFM: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFE: { value: [0, 1, 2].map(() => new THREE.Vector3()) }, uFP: { value: new THREE.Vector3() },
     uFires: { value: FIRES.map((q) => new THREE.Vector4(...q)) }, uFireT: { value: FIRE_T.map((q) => new THREE.Vector4(...q)) }, uPiles: { value: PILES.map((q) => new THREE.Vector4(...q)) }, uPileT: { value: new THREE.Vector2(...PILE_T) }, uBurn: { value: 0 },
     uCol: { value: [...COL_U, 0, 0].map(() => new THREE.Vector4()) },
     uSmokeLow: { value: col(0.5, 0.3, 0.2) }, uSmokeHigh: { value: col(0.5, 0.48, 0.48) }, uSmokeFire: { value: col(0, 0, 0) },
@@ -658,7 +661,6 @@ function build(canvas, renderer, tier) {
   mesh(new THREE.CylinderGeometry(0.32, 0.21, 0.75, 24).translate(0, 0.375, 0), paper, 0, 0, 0, inner[2]);
   mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 24), paper, 0, 0.78, 0, inner[2]);
   pack.forEach((g) => scene.add(g));
-  const trails = points(n(240), 12, () => [0, 0, 0], TRAIL);  // gold sparks behind each flying piece
   const packMats = [paper, inner[1].children[0].material];
   // packaging.glb waits here until the fold has not begun (or nothing is drawn yet), so neither the pieces nor the
   // fibre targets jump; packModel turns true once it is in
@@ -845,7 +847,20 @@ function build(canvas, renderer, tier) {
   const SUN_KEY = col(1, 0.56, 0.24), FIRE_BOUNCE = col(1.2, 0.45, 0.12), fb = col(0, 0, 0), CORAL = col(0.95, 0.36, 0.2), MID_WARM = col(1.15, 0.36, 0.17), MID_DEEP = col(0.85, 0.28, 0.2), coral = col(0, 0, 0), mid = col(0, 0, 0), tc = col(0, 0, 0);
   const TREE_DARK = col(0.06, 0.05, 0.045), Z_WARM = col(0.72, 0.3, 0.22), Z_VIOLET = col(0.3, 0.2, 0.34), SMOKE_CEIL = col(0.2, 0.175, 0.16), SMOKE_HZ = col(0.34, 0.29, 0.26), AFTER = col(1, 0.48, 0.2);
   const Z_DUSK = col(0.2, 0.2, 0.31), Z_NIGHT = col(0.035, 0.04, 0.12), CITY_FOG = col(0.07, 0.065, 0.13), CLOUD = col(0.2, 0.13, 0.17), WARM_FILL = col(1, 0.7, 0.4), SMOKE_DARK = col(0.15, 0.13, 0.12), SMOKE_LIT = col(0.85, 0.45, 0.22), MOON = col(0.42, 0.45, 0.78), HAZE = col(0.46, 0.42, 0.4), CITYGLOW = col(0.9, 0.5, 0.22);
-  const horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3(), sv = new THREE.Vector3(), fwd = new THREE.Vector3();
+  // camera frames for the flight: eye, forward, right, up; a point's coordinates in a frame
+  const UP = new THREE.Vector3(0, 1, 0), basis = () => ({ e: new THREE.Vector3(), f: new THREE.Vector3(), r: new THREE.Vector3(), u: new THREE.Vector3() });
+  const B0 = basis(), B1 = basis(), BQ = basis(), fl0 = new THREE.Vector3(), fl1 = new THREE.Vector3();
+  function camBasis(K, b) {
+    b.e.set(K.x, K.y, K.z);
+    b.f.set(K.lookX - K.x, K.lookY - K.y, K.lookZ - K.z).normalize();
+    b.r.crossVectors(b.f, UP).normalize();
+    b.u.crossVectors(b.r, b.f);
+  }
+  const toLocal = (b, p, out) => {
+    p.sub(b.e);
+    return out.set(p.dot(b.r), p.dot(b.u), p.dot(b.f));
+  };
+  const flyC = new THREE.Vector3(), horizon = col(0, 0, 0), zenith = col(0, 0, 0), sunDir = new THREE.Vector3(), v = new THREE.Vector3(), sv = new THREE.Vector3(), fwd = new THREE.Vector3();
 
   // ---- Blender models (models/*.glb, see prepare()): each replaces its v1 shapes once loaded; until then, or if
   // it fails, v1 stays. They take the film's lights; their textures carry AO (on uv1) and detail only.
@@ -1156,7 +1171,6 @@ function build(canvas, renderer, tier) {
       fireLight.distance = 6;
       fireLight.decay = 1.2;
       if (P.city > 0.5) fireLight.position.set(TABLE[0] + 0.25, TABLE[1] + 0.7, TABLE[2] - 0.9);
-      else fireLight.position.set(C[0], 2.6, C[2] - 2.4);
       fireLight.intensity = P.city > 0.5 ? 1.4 * P.city : 6 * smooth(0.6, 0.7, q) * (1 - P.fly);
     }
     bladeU.uPack.value = form * (1 - P.fly) * 0.6;
@@ -1164,17 +1178,29 @@ function build(canvas, renderer, tier) {
     U.uRim.value.setRGB(1, 0.6, 0.3).multiplyScalar(0.6 * form * (1 - 0.8 * P.city));  // the afterglow behind them rims the pulp
     packMats.forEach((m) => { m.opacity = U.uSurf.value * (m.userData.op ?? 1); });  // the pulp surface fills in over the settled outline
     const s0 = packModel ? FIELD_S : FOLD_S, s1 = packModel ? 1 : LAND_S;
+    // The flight (p 0.72 to 1), as one group framed by the camera: its centre glides in camera space from where it formed
+    // (the middle of the frame at p 0.72) to where the table top sits in the final frame (p 1), while the pieces settle
+    // to real size and the table layout. Scale and depth shrink together, so the group keeps its size on screen and comes
+    // down onto the table as the camera arrives. One curve for every piece; pure in p (cameras read without the sway).
+    const tall = camera.aspect < 1, settle = smooth(0.72, 1, q), land = settle;
+    camBasis(params(0.72, 0, tall).camera, B0);
+    camBasis(params(1, 0, tall).camera, B1);
+    camBasis(params(Math.max(q, 0.72), 0, tall).camera, BQ);
+    toLocal(B0, sv.set(FORM_C[0], FORM_C[1] + lift, FORM_C[2]), fl0);
+    toLocal(B1, sv.set(...TABLE_C), fl1);
+    fl0.lerp(fl1, settle);
+    flyC.copy(BQ.e).addScaledVector(BQ.r, fl0.x).addScaledVector(BQ.u, fl0.y).addScaledVector(BQ.f, fl0.z);
     pack.forEach((g, i) => {
-      // slow start keeps them just ahead of the camera; the cutlery flies with the piece above it
-      const o = OBJ[i], e = clamp01((P.fly - (i % 3) * 0.08) / 0.84) ** 2.2;
-      const end = v.set(TABLE[0] + o.table[0], TABLE[1], TABLE[2] + o.table[1]), mid = (a, b) => (a + b) / 2;
-      const m = [mid(o.at[0], end.x), mid(o.at[1], end.y) + 4, mid(o.at[2], end.z)];
-      const b = (k) => (1 - e) ** 2 * o.at[k] + 2 * e * (1 - e) * m[k] + e * e * end.getComponent(k);
+      const o = OBJ[i], tx = TABLE[0] + o.table[0] - TABLE_C[0], tz = TABLE[2] + o.table[1] - TABLE_C[2];
       // presented just above chest height once formed
-      g.position.set(b(0), b(1) + lift * (1 - e) + 0.05 * Math.sin(t * 1.2 + i * 2) * (1 - e) * (1 - form), b(2));
-      g.rotation.set(Math.sin(e * Math.PI) * 0.5, o.rot + (o.table[2] - o.rot) * e + (1 - e) * (i % 2 ? -6.28 : 6.28), 0);
-      g.scale.setScalar(s0 + (s1 - s0) * e);
-      inner[i].quaternion.slerpQuaternions(packModel ? qAir[i] : qFlat, qFlat, e);
+      g.position.set(
+        flyC.x + (o.at[0] - FORM_C[0]) * (1 - settle) + tx * settle,
+        flyC.y + (o.at[1] - FORM_C[1]) * (1 - settle) + 0.05 * Math.sin(t * 1.2 + i * 2) * (1 - settle) * (1 - form),
+        flyC.z + (o.at[2] - FORM_C[2]) * (1 - settle) + tz * settle,
+      );
+      g.rotation.set(Math.sin(settle * Math.PI) * 0.12, o.rot + (o.table[2] - o.rot) * settle, 0);
+      g.scale.setScalar(s0 + (s1 - s0) * settle);
+      inner[i].quaternion.slerpQuaternions(packModel ? qAir[i] : qFlat, qFlat, settle);
       g.visible = form > 0.001 && (packModel || i < 3);
       if (packModel) {
         // pressed from the far side toward where its straws come in (the spine's end; the cutlery's branch, halfway up)
@@ -1186,17 +1212,15 @@ function build(canvas, renderer, tier) {
         pieceMats[i].forEach((m) => { m.opacity = (m.userData.op ?? 1) * Math.min(1, 8 * Math.max(formK, latK)); });
         g.visible = formK + latK > 0.001;
       }
-      contact[i].material.opacity = 0.7 * smooth(0.85, 1, e);
-      contact[i].visible = g.visible && e > 0.85;
-      if (i > 2) return;
-      U.uFA.value[i].set(...o.at);
-      U.uFM.value[i].set(...m);
-      U.uFE.value[i].copy(end);
-      U.uFP.value.setComponent(i, e);
+      contact[i].material.opacity = 0.7 * smooth(0.85, 1, land);
+      contact[i].visible = g.visible && land > 0.85;
       // contact shadow on the stubble while it rests low (none once it floats or flies)
-      bladeU.uObj.value[i].set(g.position.x, g.position.y, g.position.z, form * (1 - smooth(0, 0.15, e)) * smooth(0.6, 0.1, g.position.y - groundH(g.position.x, g.position.z)));
+      if (i < 3) bladeU.uObj.value[i].set(g.position.x, g.position.y, g.position.z, form * (1 - smooth(0.72, 0.74, q)) * smooth(0.6, 0.1, g.position.y - groundH(g.position.x, g.position.z)));
     });
-    trails.visible = P.fly > 0 && P.fly < 1;
+    // the warm key and the rim travel with the group until the café's lights take over
+    sv.copy(flyC).sub(v.set(FORM_C[0], FORM_C[1] + lift, FORM_C[2]));
+    packLight.position.set(C[0] - 1.2, 3.2, C[2] + 2.6).add(sv);
+    if (q > 0.55 && P.city <= 0.5) fireLight.position.set(C[0], 2.6, C[2] - 2.4).add(sv);
     // below the terrace: it falls away past the railing
     city.visible = P.city > 0.001;
     city.position.y = -12 - ((1 - P.city) ** 2) * 16;
