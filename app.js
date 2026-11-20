@@ -17,6 +17,7 @@ const el = (tag, props = {}, ...kids) => {
 const motion = matchMedia('(prefers-reduced-motion: reduce)'); // read live: the setting can change mid-visit
 const store = (() => { try { return localStorage; } catch { return null; } })(); // blocked site data throws
 let bag = loadBag(store);
+if (bag.length) saveBag(store, bag);  // writes back the cleaned bag (old logo lines on products without logo printing)
 
 // Static markup only, no user data.
 document.body.insertAdjacentHTML('beforeend', `
@@ -162,7 +163,7 @@ function lineItem(l, i) {
   });
   return el('li', {},
     el('div', { className: 'bl-info' }, el('strong', {}, p.name),
-      el('span', { className: 'fine' }, `${l.logo ? 'With your logo. ' : ''}${p.perCarton.toLocaleString('en')} pieces per carton, ${formatPiece(pieceSatang(l.id, l.cartons, l.logo))} per piece`)),
+      el('span', { className: 'fine' }, `${l.logo ? 'With your logo. ' : ''}${p.perCarton.toLocaleString('en')} ${p.unit}s per carton, ${formatPiece(pieceSatang(l.id, l.cartons, l.logo))} per ${p.unit}`)),
     el('div', { className: 'bl-row' }, el('label', { className: 'bl-qty' }, 'Cartons ', input), total, remove));
 }
 

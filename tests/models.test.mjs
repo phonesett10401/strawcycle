@@ -42,9 +42,9 @@ test('models total at most 200,000 triangles', () => {
 });
 
 const NEEDED = {
-  'packaging.glb': ['fork', 'spoon', 'chopsticks', 'drinking_straw'],
+  'packaging.glb': ['box', 'bowl', 'cup', 'fork', 'spoon', 'chopsticks', 'drinking_straw'],
   'farmer.glb': ['torch_flame'],
-  'cafe.glb': ['candle_flame', 'string_posts', ...Array.from({ length: 14 }, (_, i) => `bulb_${String(i).padStart(2, '0')}`)],
+  'cafe.glb': ['candle', 'candle_flame', 'string_posts', ...Array.from({ length: 14 }, (_, i) => `bulb_${String(i).padStart(2, '0')}`)],
 };
 
 for (const [file, names] of Object.entries(NEEDED)) {

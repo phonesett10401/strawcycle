@@ -19,7 +19,7 @@ Every page shares the bag (a side drawer) and a demo checkout. The bag is kept i
 ## How the business works
 
 - **Bulk prices.** Packaging is sold by the carton. 1 to 4 cartons pay the list price, 5 to 19 get 10% off, 20 or more get 18% off. Over 100 cartons, the page suggests asking for a quote.
-- **Your logo.** From 10 cartons a restaurant can have its logo printed on the packaging for ฿0.50 more per piece.
+- **Your logo.** From 10 cartons a restaurant can have its logo printed on meal boxes, bowls, hot cups and carry bags for ฿0.50 more per piece (not on cutlery, chopsticks or drinking straws). Chopsticks are priced per pair.
 - **Shipping.** Free when the packaging comes to more than ฿3,000, otherwise a flat ฿150. Cartons arrive in 2 to 4 working days. Sponsorships are digital, so they have no shipping.
 - **Sponsorship.** ฿99 pays a farmer for the straw of one rai (1,600 m²) instead of burning it. After checkout you get a certificate you can print.
 - **Impact maths.** We use 650 kg of straw per rai and about 20 g of straw per 750 ml meal box (other product weights are estimates too). An order shows the kilograms of straw it kept out of the fire. **650 kg per rai is our planning estimate, not a measured or sourced figure**; real yields vary with the rice and the season.
@@ -40,7 +40,7 @@ Then open <http://127.0.0.1:5173>. (Opening the files straight from disk does no
 node --test
 ```
 
-The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film timeline (`timeline.js`), the film tiers and flags (`tiers.js`), the model budget (`tests/models.test.mjs`) and the shared parts every page must have.
+The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film timeline (`timeline.js`), the film tiers and flags (`tiers.js`), the model budget and node names (`tests/models.test.mjs`), the business product cards against the price list, the shared parts every page must have, and a lint check that no code hides after a trailing `//` comment in the film scripts (`tests/lint.test.mjs`).
 
 ## Deploy on Vercel
 
@@ -53,25 +53,25 @@ The tests cover the prices, bag, shipping and impact maths (`shop.js`), the film
 
 The Home film picks one of three detail tiers:
 
-- **Low** has no post-processing and fewer particles. Phones, touch devices, narrow screens, devices with 4 GB of memory or less, and integrated GPUs (Intel HD/UHD/Iris, Radeon Vega and `M`-series, Mali, Adreno) start here.
-- **High** is the default on a desktop with a discrete GPU: post-processing, anti-aliasing and about ten times Low's particles.
-- **Ultra** is for recording. It is used only by `?film=video`: no anti-aliasing, about thirty times Low's particles, and the resolution of the capture window.
+- **Low** has no post-processing and fewer particles. Phones, touch devices, narrow screens, devices with 4 GB of memory or less, and integrated GPUs (Intel HD/UHD/Iris, Radeon Vega and `M`-series, Mali, Adreno, PowerVR) start here.
+- **High** is the default on a desktop with a discrete GPU: post-processing, multisample anti-aliasing, a pixel ratio of at most 1.5 and about ten times Low's particles.
+- **Ultra** is for recording. It is used only by `?film=video`: FXAA anti-aliasing (no multisampling, so repeated frames match exactly), about thirty times Low's particles, and the resolution of the capture window.
 
 If frames run slow, the live film steps down one level at a time (High, then High at pixel ratio 1, then Low, then the stills).
 
 The film is switched with URL flags:
 
 - `index.html?film=off` shows the four still images instead of the 3D film.
-- `index.html?film=video&p=0.37&t=2` is for screen-capture tools. It uses Ultra, skips the speed check, stops the scroll loop and waits until the models and post-processing have loaded. The capture tool then draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds). `p` and `t` in the URL set the first frame. Add `&tier=low` to capture the phone look.
+- `index.html?film=video&p=0.37&t=2` is for screen-capture tools. It uses Ultra, skips the speed check, stops the scroll loop and waits until the models and post-processing have loaded. The capture tool then draws each frame itself by calling `window.scFilm.render(p, t)` (`p` is scroll progress from 0 to 1, `t` is time in seconds). `p` and `t` in the URL set the first frame. Add `&tier=low` to capture the Low tier; it gives the phone look (half the particles) only when the capture window is under 768 px wide.
 - `index.html?film=bench` plays the film from start to end in 20 seconds with no frame skipping and no step-downs, to measure frame times.
 
-The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit), WebGL is missing or the Three.js download fails.
+The film also turns itself off (and shows the stills) when the visitor prefers reduced motion, the device is too slow (checked at the start and again throughout the visit), WebGL is missing, the Three.js download fails, the film has not started within 4 seconds, or the browser loses the WebGL context. Once it has fallen back to the stills it does not download the models. With JavaScript off, the page shows the same JPG stills.
 
 ## The 3D models
 
-The hut, the farmer, the packaging (box, bowl, cup, cutlery, straw) and the café (table, chairs, bulbs) are Blender models in `models/*.glb`, loaded by the film. They are built by Python scripts in `blender/` run in Blender without its window, and the `.glb` files are committed, so you only need Blender to change a model. `docs/blender.md` has the setup and the rebuild commands.
+The hut, the farmer, the packaging (box, bowl, cup, fork, spoon, chopsticks, drinking straw) and the café (table, chairs, candle, bulbs) are Blender models in `models/*.glb`, loaded by the film. They are built by Python scripts in `blender/` run in Blender without its window, and the `.glb` files are committed, so you only need Blender to change a model. `docs/blender.md` has the setup and the rebuild commands.
 
-`tests/models.test.mjs` keeps the models inside their budget (1.5 MB and 200,000 triangles in total) and checks the node names the film looks up. A model that fails to load is left out and the film still plays.
+`tests/models.test.mjs` keeps the models inside their budget (1.5 MB and 200,000 triangles in total) and checks the node names the film looks up. A model that fails to load (or is missing a node the film needs) is left out on its own and the film still plays.
 
 ## The still images
 

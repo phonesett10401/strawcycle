@@ -35,33 +35,14 @@ const tick = (t) => counters.forEach((c) => {
   if (c.textContent !== v) c.textContent = v;
 });
 
-// ---- shaders --------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ---- the world ------------------------------------------------------------------------------
-
-
-
 const groundH = (x, z) => (z < -36 ? 0 : (0.1 * Math.sin(x * 0.9) * Math.cos(z * 0.7) + 0.05 * Math.sin(x * 2.3 + z * 1.7)) * smooth(-36, -31, z));
 const SMOKE_CAP = { low: 0.3, high: 0.22, ultra: 0.26 };  // largest smoke puff, x uScale (screen overdraw)
 const BLADES = 24000;                                // field blades at density 1 (High x10, Ultra x30)
 const C = [0, 2.4, -14];                              // where the straw swirls and folds
 const ROW = 0.3, HILL = 0.22;                         // harvest rows (along z) and the hill spacing along a row
-const HUT = [9.5, 0, -16];                            // right of the hero text, the sun setting behind it
+const HUT = [9, 0, -16];                              // right of the hero text, the sun setting behind it (0.5 m left of v1 so the 1.25x hut stays in the phone frame)
+const HUT_S = 1.25;                                   // the hut is drawn 1.25x around its ground origin so the farmer reads at real size beside it
 const DECK = 0.06;                                    // the terrace floor: cafe.glb's origin sits on it
 const TABLE = [0, DECK + 0.75, -42];                  // the bistro table top, real size (0.70 m across)
 const CANDLE_AT = [-0.29, 0, -0.1];                   // the candle on the table, left of the box and clear of it (cafe.glb models it at -0.2, z 0.13)
@@ -84,7 +65,7 @@ function festoon(g, x, y, z) {
 // The farmer's line (FARMER) is the nearest and starts at 0 at his torch, at its right end; the others were lit earlier.
 const FIRES = [[-5.5, -18.8, -12, -17.5], [2.8, -22.6, -2.5, -21.3], [4.2, -13.6, -3.5, -12.9], [12, -23.5, 5.5, -24], [-2, -27, -10, -25.5]];
 const FIRE_T = [[-0.9, 0.55, 0, 1.6], [-0.45, 0.5, 1, 1.6], [0, 0.8, 0, 1.3], [-0.7, 0.6, 0, 1.3], [-1.2, 0.6, 1, 1.5]];
-const FARMER = 2, FARMER_S = 1.5;                  // his line; he is drawn 1.5x so he reads as the story's anchor at film distance
+const FARMER = 2, FARMER_S = 1;                    // his line; real size (1.65 m), the hut beside him is scaled up instead
 // raked straw piles out in the open field, centre-left, metres clear of the hut and of the lines: x, z, radius, height; and when each catches
 const PILES = [[2.4, -16.8, 0.95, 0.85], [-0.6, -17, 0.75, 0.7]], PILE_T = [0.05, 0.3];
 const COL_U = [0.5, 0.5, 0.25, 0.5, 0.5];             // where each line's smoke column stands (then one per pile)
@@ -247,16 +228,26 @@ function arrange(name, root) {
 
 // Loads every model; one that fails (404, blocked folder, blocked Draco decoder) is left out with a warning.
 async function loadModels() {
+  const stills = () => root.classList.contains('no-film');
+  if (stills()) return {};
   const [{ GLTFLoader }, { DRACOLoader }, { MeshSurfaceSampler }] = await Promise.all([
     import('three/addons/loaders/GLTFLoader.js'), import('three/addons/loaders/DRACOLoader.js'), import('three/addons/math/MeshSurfaceSampler.js'),
   ]);
+  // the page may have gone to the stills while the loaders came in (requests already in flight are not cancelled)
+  if (stills()) return {};
   const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/');
   const loader = new GLTFLoader().setDRACOLoader(draco), names = ['hut', 'packaging', 'cafe', 'farmer'], M = { Sampler: MeshSurfaceSampler };
   const got = await Promise.allSettled(names.map((n) => loader.loadAsync(`models/${n}.glb`)));
   draco.dispose();
+  if (stills()) return {};
   got.forEach((r, i) => {
-    if (r.status === 'fulfilled') M[names[i]] = arrange(names[i], r.value.scene);
-    else console.warn('film model off:', names[i], r.reason?.message ?? r.reason);
+    try {
+      if (r.status === 'rejected') throw r.reason;
+      M[names[i]] = arrange(names[i], r.value.scene);
+    } catch (e) {
+      // a renamed node makes arrange() throw: only that model is left out
+      console.warn('film model off:', names[i], e?.message ?? e);
+    }
   });
   return M;
 }
@@ -529,7 +520,10 @@ function build(canvas, renderer, tier) {
     hutV1 = hut.children.filter((m) => m !== hutWin);
     // its shade on the ground
     mesh(new THREE.PlaneGeometry(3.6, 3.0).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, alphaMap: shadowTex, transparent: true, opacity: 0.55, depthWrite: false }), 0, 0.04, 0, hut);
-    hut.position.set(...HUT); hut.rotation.y = -0.5; scene.add(hut);
+    hut.position.set(...HUT);
+    hut.rotation.y = -0.5;
+    hut.scale.setScalar(HUT_S);
+    scene.add(hut);
   }
   const hutShadow = mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x140904, alphaMap: shadowTex, transparent: true, depthWrite: false }), 0, 0.05, 0);
 
@@ -782,7 +776,7 @@ function build(canvas, renderer, tier) {
   // Glows: the hut lantern and the café bulbs (aSeed.x picks which, aSeed.y is size)
   // points 3-4 are the candle, 5-18 the bulbs: cafe.glb moves them onto its flame and bulbs
   const glowPos = (() => {
-    const pos = [HUT[0] - 0.2, 1.6, HUT[2] + 0.3, HUT[0] - 0.2, 1.6, HUT[2] + 0.3, C[0], 1.3, C[2] - 0.7], sd = [0.2, 1.4, 0, 1, 0.2, 5.5, 1, 1, 0.8, 6, 0, 1], cl = [1, 0.62, 0.25, 0.5, 0.28, 0.1, 0.45, 0.3, 0.14];
+    const pos = [HUT[0] - 0.2 * HUT_S, 1.6 * HUT_S, HUT[2] + 0.3 * HUT_S, HUT[0] - 0.2 * HUT_S, 1.6 * HUT_S, HUT[2] + 0.3 * HUT_S, C[0], 1.3, C[2] - 0.7], sd = [0.2, 1.4, 0, 1, 0.2, 5.5, 1, 1, 0.8, 6, 0, 1], cl = [1, 0.62, 0.25, 0.5, 0.28, 0.1, 0.45, 0.3, 0.14];
     // candle flame and its halo
     pos.push(CANDLE[0], CANDLE[1] + 0.06, CANDLE[2], CANDLE[0], CANDLE[1] + 0.06, CANDLE[2]);
     sd.push(0.5, 0.05, 3, 0, 0.5, 0.7, 5, 1);
@@ -1097,12 +1091,12 @@ function build(canvas, renderer, tier) {
     bladeU.uRows.value = 0.6 * sunW + 0.25 * glow;
     bladeU.uRimK.value = (post ? 1.7 : 1) * (small ? 0.5 : 1) * (1 + 0.8 * sunW);  // backlit gold stubble while the sun is up
     // the hut casts a long shadow toward the camera from the low sun (blades and ground)
-    const shx = -sunDir.x, shz = -sunDir.z, shn = Math.hypot(shx, shz), shL = Math.min(30, 2.8 / Math.max(sunDir.y, 0.09)), shA = 0.6 * sunW * (1 - P.smoke);
+    const shx = -sunDir.x, shz = -sunDir.z, shn = Math.hypot(shx, shz), shL = Math.min(30, 2.8 * HUT_S / Math.max(sunDir.y, 0.09)), shA = 0.6 * sunW * (1 - P.smoke);
     bladeU.uHutSh.value.set(HUT[0], HUT[2], shx / shn, shz / shn);
-    bladeU.uHutL.value.set(shA > 0.01 ? shL : 0.001, 1.4);
+    bladeU.uHutL.value.set(shA > 0.01 ? shL : 0.001, 1.4 * HUT_S);
     hutShadow.position.set(HUT[0] + shx / shn * shL * 0.45, 0.05, HUT[2] + shz / shn * shL * 0.45);
     hutShadow.rotation.y = Math.atan2(shx, shz);
-    hutShadow.scale.set(2.8, 1, shL);
+    hutShadow.scale.set(2.8 * HUT_S, 1, shL);
     hutShadow.material.opacity = shA;
     hutShadow.visible = shA > 0.01;
 
@@ -1288,7 +1282,8 @@ async function boot() {
   // says so for the capture harness.
   const attachModels = () => {
     const stall = setTimeout(() => { root.dataset.filmModels = 'stalled'; }, 20000);
-    return loadModels().then((m) => film.attachModels(m)).catch((e) => console.warn('film models off:', e)).finally(() => {
+    // the page may have fallen back to the stills meanwhile: no models for a disposed scene
+    return loadModels().then((m) => { if (!root.classList.contains('no-film')) film.attachModels(m); }).catch((e) => console.warn('film models off:', e)).finally(() => {
       clearTimeout(stall);
       delete root.dataset.filmModels;  // a late arrival is not a stall
     });

@@ -120,3 +120,31 @@ test('setCartons keeps line order', () => {
   assert.deepEqual(merged.map((l) => l.id), ['bowl', 'cup', 'meal-box']);
   assert.deepEqual(merged[1], { kind: 'product', id: 'cup', cartons: 11, logo: false });
 });
+test('logo printing only on the meal box, bowl, hot cup and carry bag', () => {
+  assert.deepEqual(S.PRODUCTS.filter((p) => p.logo).map((p) => p.id), ['meal-box', 'bowl', 'cup', 'bag']);
+  for (const id of ['cutlery', 'chopsticks', 'drinking-straw']) {
+    assert.equal(S.pieceSatang(id, 20, true), S.pieceSatang(id, 20, false), id);
+    assert.equal(S.lineBaht(id, 20, true), S.lineBaht(id, 20, false), id);
+    assert.deepEqual(S.addProduct([], id, 12, true), [{ kind: 'product', id, cartons: 12, logo: false }], id);
+  }
+  assert.equal(S.pieceSatang('bag', 10, true), S.pieceSatang('bag', 10, false) + S.LOGO_SATANG);
+  for (const p of S.PRODUCTS) for (const c of [10, 20, 999]) assert.ok(Number.isInteger(S.lineBaht(p.id, c, true)), p.id);
+});
+test('chopsticks are priced per pair', () => {
+  assert.equal(S.product('chopsticks').unit, 'pair');
+  assert.ok(S.PRODUCTS.filter((p) => p.id !== 'chopsticks').every((p) => p.unit === 'piece'));
+});
+test('loadBag turns an old logo line on cutlery, chopsticks or straws into a plain line', () => {
+  const st = (v) => ({ getItem: () => JSON.stringify(v) });
+  const line = (id, cartons, logo) => ({ kind: 'product', id, cartons, logo });
+  assert.deepEqual(S.loadBag(st([line('drinking-straw', 12, true)])), [line('drinking-straw', 12, false)]);
+  // under the old 10-carton minimum too: kept as plain, not a reason to drop the bag
+  assert.deepEqual(S.loadBag(st([line('cutlery', 3, true)])), [line('cutlery', 3, false)]);
+  // merges with the plain line of the same product, in its place; other lines untouched
+  const old = [line('chopsticks', 2, false), line('cup', 12, true), line('chopsticks', 15, true), { kind: 'pack', qty: 1 }];
+  const bag = S.loadBag(st(old));
+  assert.deepEqual(bag, [line('chopsticks', 17, false), line('cup', 12, true), { kind: 'pack', qty: 1 }]);
+  assert.ok(Number.isInteger(S.totals(bag).total));
+  // a logo line on a product that offers it still needs 10 cartons
+  assert.deepEqual(S.loadBag(st([line('bowl', 3, true)])), []);
+});

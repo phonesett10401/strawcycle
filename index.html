@@ -24,7 +24,7 @@
     // Not under ?film=video or ?film=bench: capture tools wait as long as the shaders take.
     if (!/[?&]film=(video|bench)/.test(location.search)) setTimeout(function () { if (!window.scFilm) window.scStills(); }, 4000);
   </script>
-  <noscript><style>/* JS off: the stills, laid out as in stills mode (html.no-film in styles.css, which loads after this) */ html .still { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; } html .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, var(--film-scrim), transparent 65%); }</style></noscript>
+  <noscript><style>/* JS off: the JPG stills in each <noscript>, laid out as in stills mode (html.no-film in styles.css, which loads after this); the SVG placeholders stay hidden */ html .still:not(.still-nojs) { display: none; } html .still-nojs { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; } html .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, var(--film-scrim), transparent 65%); }</style></noscript>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="home">
@@ -66,6 +66,7 @@
         <img class="still" src="images/scene-1.svg" alt="Golden rice stubble at sunset in northern Thailand, dust in the air and a farmer's hut on stilts." width="1600" height="900" loading="lazy" decoding="async"
           onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-1.svg'">
       </picture>
+      <noscript><picture><source media="(orientation: portrait)" srcset="images/scene-1-tall.jpg"><img class="still still-nojs" src="images/scene-1.jpg" alt="Golden rice stubble at sunset in northern Thailand, dust in the air and a farmer's hut on stilts." width="1600" height="900"></picture></noscript>
       <div class="wrap caption reveal">
         <h2 id="beat-1-title">Every year, northern farmers burn huge areas of rice straw after the harvest.</h2>
       </div>
@@ -78,6 +79,7 @@
         <img class="still" src="images/scene-2.svg" alt="Field fires and grey smoke rising into the evening sky, then the sky clearing." width="1600" height="900" loading="lazy" decoding="async"
           onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-2.svg'">
       </picture>
+      <noscript><picture><source media="(orientation: portrait)" srcset="images/scene-2-tall.jpg"><img class="still still-nojs" src="images/scene-2.jpg" alt="Field fires and grey smoke rising into the evening sky, then the sky clearing." width="1600" height="900"></picture></noscript>
       <div class="wrap caption reveal">
         <h2 id="beat-2-title">What if the straw was worth more than the fire?</h2>
       </div>
@@ -87,9 +89,10 @@
       <picture>
         <source media="(orientation: portrait)" data-srcset="images/scene-3-tall.jpg">
         <source data-srcset="images/scene-3.jpg">
-        <img class="still" src="images/scene-3.svg" alt="Loose straw fibres swirling in the air and folding into a meal box, a bowl and a cup." width="1600" height="900" loading="lazy" decoding="async"
+        <img class="still" src="images/scene-3.svg" alt="Loose straw fibres swirling over the field and pressing into a meal box, a bowl, a cup with a drinking straw, a fork, a spoon and chopsticks." width="1600" height="900" loading="lazy" decoding="async"
           onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-3.svg'">
       </picture>
+      <noscript><picture><source media="(orientation: portrait)" srcset="images/scene-3-tall.jpg"><img class="still still-nojs" src="images/scene-3.jpg" alt="Loose straw fibres swirling over the field and pressing into a meal box, a bowl, a cup with a drinking straw, a fork, a spoon and chopsticks." width="1600" height="900"></picture></noscript>
       <div class="wrap caption reveal">
         <h2 id="beat-3-title">We buy it from the farmer and press it into packaging.</h2>
       </div>
@@ -99,13 +102,14 @@
       <picture>
         <source media="(orientation: portrait)" data-srcset="images/scene-4-tall.jpg">
         <source data-srcset="images/scene-4.jpg">
-        <img class="still" src="images/scene-4.svg" alt="A meal box, a bowl and a cup on a café table at dusk, with Bangkok's lights behind." width="1600" height="900" loading="lazy" decoding="async"
+        <img class="still" src="images/scene-4.svg" alt="A meal box, a bowl, a cup with a straw, a fork, a spoon and chopsticks on a candlelit café table on a Bangkok rooftop at night, the city lights behind." width="1600" height="900" loading="lazy" decoding="async"
           onerror="this.onerror=null;this.parentNode.querySelectorAll('source').forEach(function(s){s.remove()});this.src='images/scene-4.svg'">
       </picture>
+      <noscript><picture><source media="(orientation: portrait)" srcset="images/scene-4-tall.jpg"><img class="still still-nojs" src="images/scene-4.jpg" alt="A meal box, a bowl, a cup with a straw, a fork, a spoon and chopsticks on a candlelit café table on a Bangkok rooftop at night, the city lights behind." width="1600" height="900"></picture></noscript>
       <div class="wrap caption reveal">
         <h2 id="beat-4-title">Boxes, bowls and cups for Bangkok’s cafés and restaurants.</h2>
         <div class="counter-block">
-        <p class="counters-label">Example figures, not live data</p>
+        <p class="counters-label">Example figures for illustration</p>
         <dl class="counters">
           <div><dt>Rai saved from burning</dt><dd class="num" data-counter="412" data-rate="0.000123">412</dd></div>
           <div><dt>Farmers paid</dt><dd class="num" data-counter="138" data-rate="0.0005">138</dd></div>

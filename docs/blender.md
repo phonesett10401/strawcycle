@@ -16,11 +16,11 @@ without its window. The `.glb` files are committed, so you only need Blender to 
 2. Set `BLENDER` to your `blender.exe`. For example, with the portable build:
 
    ```powershell
-   $env:BLENDER = "C:/Users/phone/blender/blender-5.3.0-windows-x64/blender.exe"
+   $env:BLENDER = "C:/path/to/blender.exe"
    ```
 
    ```sh
-   export BLENDER="C:/Users/phone/blender/blender-5.3.0-windows-x64/blender.exe"
+   export BLENDER="C:/path/to/blender.exe"
    ```
 
 ## Build a model

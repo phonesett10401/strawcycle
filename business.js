@@ -2,7 +2,8 @@ import { addProduct, clampCartons, formatPiece, formatTHB, lineBaht, listBaht, p
 
 document.querySelectorAll('article[data-product]').forEach((card) => {
   const id = card.dataset.product;
-  const qty = card.querySelector('[name=cartons]'), logo = card.querySelector('[name=logo]');
+  // cards without logo printing have no checkbox: a stand-in that is never checked
+  const qty = card.querySelector('[name=cartons]'), logo = card.querySelector('[name=logo]') ?? { checked: false, addEventListener() {} };
   const $ = (s) => card.querySelector(s);
   function update() {
     const c = clampCartons(qty.value);

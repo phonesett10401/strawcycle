@@ -6,6 +6,8 @@ for (const p of PRODUCTS) test(`business card: ${p.id}`, () => {
   assert.ok(card, 'card exists');
   assert.ok(card.includes(formatPiece(p.satang)), 'list price per piece');
   assert.ok(card.includes(`${p.perCarton.toLocaleString('en')} per carton`), 'per carton');
+  assert.ok(card.includes(`</span> per ${p.unit} `), `per ${p.unit}`);
+  assert.equal(card.includes('name="logo"'), p.logo, 'logo option only where logo printing is offered');
 });
 test('business forms and badge', () => {
   assert.match(html, /<form[^>]*data-demo-form="sample"/);
