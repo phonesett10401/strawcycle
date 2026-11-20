@@ -130,9 +130,10 @@ test('logo printing only on the meal box, bowl, hot cup and carry bag', () => {
   assert.equal(S.pieceSatang('bag', 10, true), S.pieceSatang('bag', 10, false) + S.LOGO_SATANG);
   for (const p of S.PRODUCTS) for (const c of [10, 20, 999]) assert.ok(Number.isInteger(S.lineBaht(p.id, c, true)), p.id);
 });
-test('chopsticks are priced per pair', () => {
+test('chopsticks are priced per pair, cutlery per set', () => {
   assert.equal(S.product('chopsticks').unit, 'pair');
-  assert.ok(S.PRODUCTS.filter((p) => p.id !== 'chopsticks').every((p) => p.unit === 'piece'));
+  assert.equal(S.product('cutlery').unit, 'set');
+  assert.ok(S.PRODUCTS.filter((p) => !['chopsticks', 'cutlery'].includes(p.id)).every((p) => p.unit === 'piece'));
 });
 test('loadBag turns an old logo line on cutlery, chopsticks or straws into a plain line', () => {
   const st = (v) => ({ getItem: () => JSON.stringify(v) });

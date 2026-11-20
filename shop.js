@@ -1,13 +1,13 @@
 // Catalogue and carton pricing. Prices in satang (1 baht = 100 satang) until the
 // final baht total, so every line total is a whole number of baht.
 
-// logo: logo printing is offered (box, bowl, cup and bag only); unit: what one price buys (chopsticks come in pairs).
+// logo: logo printing is offered (box, bowl, cup and bag only); unit: what one price buys (chopsticks come in pairs, cutlery in sets).
 export const PRODUCTS = [
   { id: 'meal-box', name: 'Meal box, 750 ml', perCarton: 300, satang: 320, grams: 20, estimate: false, logo: true, unit: 'piece' },
   { id: 'bowl', name: 'Bowl, 500 ml', perCarton: 500, satang: 240, grams: 14, estimate: true, logo: true, unit: 'piece' },
   { id: 'cup', name: 'Hot cup, 12 oz, with lid', perCarton: 1000, satang: 190, grams: 10, estimate: true, logo: true, unit: 'piece' },
   { id: 'bag', name: 'Carry bag', perCarton: 500, satang: 280, grams: 18, estimate: true, logo: true, unit: 'piece' },
-  { id: 'cutlery', name: 'Cutlery set (fork, spoon)', perCarton: 1000, satang: 120, grams: 6, estimate: true, logo: false, unit: 'piece' },
+  { id: 'cutlery', name: 'Cutlery set (fork, spoon)', perCarton: 1000, satang: 120, grams: 6, estimate: true, logo: false, unit: 'set' },
   { id: 'chopsticks', name: 'Chopsticks, pair', perCarton: 1000, satang: 90, grams: 5, estimate: true, logo: false, unit: 'pair' },
   { id: 'drinking-straw', name: 'Drinking straw', perCarton: 2000, satang: 35, grams: 1, estimate: true, logo: false, unit: 'piece' },
 ];
