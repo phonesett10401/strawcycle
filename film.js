@@ -1,6 +1,6 @@
 // Home scroll film: one Three.js scene drawn only from params(p, t) (timeline.js), so any frame can be
 // rendered again exactly. The page passes scroll and the clock; video tools call window.scFilm.render(p, t).
-// Falls back to the still images (html.no-film) when WebGL, speed, the CDN or reduced motion say so.
+// Falls back to the still images (html.no-film) when WebGL, speed, or the CDN say so.
 import { params, rng, counter, shouldUse3D, tooSlow, through } from './timeline.js';
 import { HEAD, SOFT, DUST, FIRE, TONGUE_V, TONGUE_F, NOISE, EMBER, BLADE_V, BLADE_F, SMOKE, SMOKE_F, FIBRE, FIBRE_F, GLOW, GLOW_F, CITY, CITY_F, BOKEH, STARS, SKY_V, SKY_F, RIDGE_V, RIDGE_F, TREE_V, TREE_F, GROUND_FX, PULP, FORM, FORM_MASK, FORM_BUMP } from './shaders.js';
 import { TIERS, pickTier, nextStep, parseFilmFlags } from './tiers.js';
@@ -14,8 +14,7 @@ let THREE;
 // frames) and no speed check; frames come only from window.scFilm.render(p, t).
 const FLAGS = parseFilmFlags(location.search);
 const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
-// ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills) and under reduced motion
-// (shared PCs often have Windows animations off); for showing it in class
+// ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills); for showing it in class
 const FORCE = FLAGS.mode === 'on';
 // ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
 // One WebGL probe: does WebGL exist, and which GPU is it (integrated GPUs start on Low). Its context is freed at once.
@@ -1319,8 +1318,10 @@ function fallback() {
 
 async function boot() {
   const canvas = document.getElementById('film');
-  const motion = matchMedia('(prefers-reduced-motion: reduce)'), reducedMotion = motion.matches && !FORCE;  // ?film=on is the visitor asking for the film
-  if (!canvas || !WEBGL || reducedMotion || root.classList.contains('no-film') || FLAGS.mode === 'off') return fallback();
+  // shortcut: the film plays under prefers-reduced-motion too (shared PCs often have Windows animations off);
+  // upgrade to a 'Play the film' button on the stills if reduced-motion visitors need protecting
+  const reducedMotion = false;
+  if (!canvas || !WEBGL || root.classList.contains('no-film') || FLAGS.mode === 'off') return fallback();
 
   let film;
   try { THREE = await import('three'); film = start(canvas); } catch (e) { console.warn('film off:', e); film?.dispose(); return fallback(); }
@@ -1369,7 +1370,7 @@ async function boot() {
   const target = () => through(pts, scrollY);
   const stop = () => {
     cancelAnimationFrame(raf); removeEventListener('resize', onResize); document.removeEventListener('visibilitychange', onVis);
-    canvas.removeEventListener('webglcontextlost', onLost); motion.removeEventListener('change', onMotion); film.dispose(); fallback();
+    canvas.removeEventListener('webglcontextlost', onLost); film.dispose(); fallback();
   };
   // One step down the ladder (tiers.js STEPS); the last step is the stills. The caller resets frameMs.
   const degrade = () => {
@@ -1425,9 +1426,8 @@ async function boot() {
   const onResize = () => { film.resize(); measure(); };
   const onVis = () => { if (VIDEO || BENCH) return; cancelAnimationFrame(raf); if (!document.hidden && !manual) { last = 0; raf = requestAnimationFrame(frame); } };
   const onLost = (e) => { e.preventDefault(); stop(); };
-  const onMotion = (e) => { if (e.matches && !FORCE) stop(); };  // reduced motion switched on mid-visit: stills
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
-  canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
+  canvas.addEventListener('webglcontextlost', onLost);
   measure(); shown = target();
   if (VIDEO || BENCH) await Promise.all([postReady, modelsReady]);  // fixed renders and the bench must include post and the models
   if (root.classList.contains('no-film')) return stop();  // the 4 s failsafe fired meanwhile (slow GPU): stills, never a film on a hidden 0x0 canvas
