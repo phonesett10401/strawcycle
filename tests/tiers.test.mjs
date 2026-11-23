@@ -10,9 +10,10 @@ test('pickTier', () => {
 test('tiers', () => {
   assert.equal(T.TIERS.low.post, false); assert.equal(T.TIERS.high.post, true); assert.equal(T.TIERS.ultra.msaa, false);
   assert.equal(T.TIERS.high.density, 10); assert.equal(T.TIERS.ultra.density, 30); assert.ok(Object.isFrozen(T.TIERS.high));
+  assert.equal(T.TIERS.medium.post, true); assert.equal(T.TIERS.medium.msaa, false); assert.equal(T.TIERS.medium.dpr, 1);
 });
 test('nextStep', () => {
-  assert.deepEqual(['high', 'high-dpr1', 'low', 'stills'].map(T.nextStep), ['high-dpr1', 'low', 'stills', 'stills']);
+  assert.deepEqual(['high', 'high-dpr1', 'medium', 'low', 'stills'].map(T.nextStep), ['high-dpr1', 'medium', 'low', 'stills', 'stills']);
 });
 test('parseFilmFlags', () => {
   assert.deepEqual(T.parseFilmFlags('?film=video&p=0.37&t=2'), { mode: 'video', p: 0.37, t: 2, tier: null });

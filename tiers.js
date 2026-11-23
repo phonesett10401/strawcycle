@@ -3,6 +3,7 @@
 const tier = (name, dpr, post, msaa, density) => Object.freeze({ name, dpr, post, msaa, density });
 export const TIERS = Object.freeze({
   low: tier('low', 1, false, false, 1),
+  medium: tier('medium', 1, true, false, 5),  // High's glow and rays, half the blades: the gentle step down from High
   high: tier('high', 1.5, true, true, 10),
   ultra: tier('ultra', null, true, false, 30),
 });
@@ -15,7 +16,7 @@ export const pickTier = ({ width, coarse, deviceMemory, video }) => {
 };
 
 // Live slow-frame ladder. A low start begins at 'low'.
-export const STEPS = ['high', 'high-dpr1', 'low', 'stills'];
+export const STEPS = ['high', 'high-dpr1', 'medium', 'low', 'stills'];
 export const nextStep = (step) => STEPS[Math.min(STEPS.length - 1, STEPS.indexOf(step) + 1)];
 
 export function parseFilmFlags(search) {

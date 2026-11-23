@@ -39,7 +39,7 @@ const tick = (t) => counters.forEach((c) => {
 
 // ---- the world ------------------------------------------------------------------------------
 const groundH = (x, z) => (z < -36 ? 0 : (0.1 * Math.sin(x * 0.9) * Math.cos(z * 0.7) + 0.05 * Math.sin(x * 2.3 + z * 1.7)) * smooth(-36, -31, z));
-const SMOKE_CAP = { low: 0.3, high: 0.22, ultra: 0.26 };  // largest smoke puff, x uScale (screen overdraw)
+const SMOKE_CAP = { low: 0.3, medium: 0.22, high: 0.22, ultra: 0.26 };  // largest smoke puff, x uScale (screen overdraw)
 const BLADES = 24000;                                // field blades at density 1 (High x10, Ultra x30)
 const C = [0, 2.4, -14];                              // where the straw swirls and folds
 const HUT = [9, 0, -16];                              // right of the hero text, the sun setting behind it (0.5 m left of v1 so the 1.25x hut stays in the phone frame)
@@ -263,13 +263,13 @@ export function start(canvas, tier = TIER) {
   // MSAA is fixed when the context is made, so a High start keeps it after a step down to low.
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: tier.msaa && !VIDEO, powerPreference: 'high-performance' });
   try {
-    let cur = build(canvas, renderer, tier), models = null;
+    let cur = build(canvas, renderer, tier), models = null, post = null;
     const film = {
       renderer, tier,
       render: (p, t) => cur.render(p, t),
       resize: (force) => cur.resize(force),
       // a late import must not attach after a step down
-      attachPost: (m) => { if (film.tier.post) cur.attachPost(m); },
+      attachPost: (m) => { post = m; if (film.tier.post) cur.attachPost(m); },
       attachModels(m) {
         models = m;
         cur.attachModels(m);
@@ -280,6 +280,7 @@ export function start(canvas, tier = TIER) {
         cur = build(canvas, renderer, next);
         film.tier = next;
         if (models) cur.attachModels(models);
+        if (post && next.post) cur.attachPost(post);  // High to Medium keeps the glow
       },
       dispose: () => cur.dispose(),
     };
@@ -400,7 +401,7 @@ function build(canvas, renderer, tier) {
   {
     // then straw heaped on the piles (lying every which way over the mound)
     // Low (no post, so no bloom to fill the gaps) gets more, wider blades than density 1: the field must read full there too
-    const BLADE_W = tier.name === 'low' ? 0.04 : 0.025, field = small ? 30000 : tier.name === 'low' ? 100000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
+    const BLADE_W = { low: 0.04, medium: 0.03 }[tier.name] ?? 0.025, field = small ? 30000 : tier.name === 'low' ? 100000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
     bladeU.uFieldN.value = field;                     // instances from here on are the straw heaped on the piles
     const g = new THREE.BufferGeometry();
     // thin, tapering
@@ -545,7 +546,7 @@ function build(canvas, renderer, tier) {
   };
   // flame tongues: upright camera-facing cards, many and small on the lines, tall on the piles; phones get fewer, wider ones
   const tongues = (() => {
-    const perM = small ? 5 : { low: 8, high: 14, ultra: 20 }[tier.name], perPile = small ? 20 : { low: 30, high: 45, ultra: 60 }[tier.name];
+    const perM = small ? 5 : { low: 8, medium: 11, high: 14, ultra: 20 }[tier.name], perPile = small ? 20 : { low: 30, medium: 38, high: 45, ultra: 60 }[tier.name];
     const r = rng(5), aT = [];
     LEN.forEach((L, j) => {
       const N = Math.round(L * perM);
@@ -1378,7 +1379,7 @@ async function boot() {
     if (step === 'high-dpr1' && film.renderer.getPixelRatio() <= 1) step = nextStep(step);  // nothing to drop
     if (step === 'stills') { if (!FORCE) return stop(); step = 'low'; frames = 0; return; }
     if (step === 'high-dpr1') { film.renderer.setPixelRatio(1); film.resize(true); }
-    else { try { film.setTier(TIERS.low); } catch (e) { console.warn('film off:', e); return stop(); } }
+    else { try { film.setTier(TIERS[step]); } catch (e) { console.warn('film off:', e); return stop(); } }
     frames = 0;
   };
   function benchFrame(now) {  // ?film=bench: p runs 0..1 over 20 s, t is the clock; no frame skipping, no step-downs
