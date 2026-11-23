@@ -240,7 +240,7 @@ async function loadModels() {
   ]);
   // the page may have gone to the stills while the loaders came in (requests already in flight are not cancelled)
   if (stills()) return {};
-  const draco = new DRACOLoader().setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/libs/draco/gltf/');
+  const draco = new DRACOLoader().setDecoderPath('vendor/three/examples/jsm/libs/draco/gltf/');
   const loader = new GLTFLoader().setDRACOLoader(draco), names = ['hut', 'packaging', 'cafe', 'farmer'], M = { Sampler: MeshSurfaceSampler };
   const got = await Promise.allSettled(names.map((n) => loader.loadAsync(`models/${n}.glb`)));
   draco.dispose();
