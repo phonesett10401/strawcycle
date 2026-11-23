@@ -14,6 +14,8 @@ let THREE;
 // frames) and no speed check; frames come only from window.scFilm.render(p, t).
 const FLAGS = parseFilmFlags(location.search);
 const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
+// ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills); for showing it in class
+const FORCE = FLAGS.mode === 'on';
 // ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
 // One WebGL probe: does WebGL exist, and which GPU is it (integrated GPUs start on Low). Its context is freed at once.
 const probe = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
@@ -398,7 +400,7 @@ function build(canvas, renderer, tier) {
   {
     // then straw heaped on the piles (lying every which way over the mound)
     // Low (no post, so no bloom to fill the gaps) gets more, wider blades than density 1: the field must read full there too
-    const BLADE_W = tier.name === 'low' ? 0.04 : 0.025, field = small ? 30000 : tier.name === 'low' ? 45000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
+    const BLADE_W = tier.name === 'low' ? 0.04 : 0.025, field = small ? 30000 : tier.name === 'low' ? 100000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
     bladeU.uFieldN.value = field;                     // instances from here on are the straw heaped on the piles
     const g = new THREE.BufferGeometry();
     // thin, tapering
@@ -1372,7 +1374,7 @@ async function boot() {
   const degrade = () => {
     step = nextStep(step);
     if (step === 'high-dpr1' && film.renderer.getPixelRatio() <= 1) step = nextStep(step);  // nothing to drop
-    if (step === 'stills') return stop();
+    if (step === 'stills') { if (!FORCE) return stop(); step = 'low'; frames = 0; return; }
     if (step === 'high-dpr1') { film.renderer.setPixelRatio(1); film.resize(true); }
     else { try { film.setTier(TIERS.low); } catch (e) { console.warn('film off:', e); return stop(); } }
     frames = 0;
@@ -1407,7 +1409,7 @@ async function boot() {
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
       if (frameMs.length === 30) {
-        if (shouldUse3D({ webgl: WEBGL, reducedMotion, frameMs })) root.classList.add('film');
+        if (shouldUse3D({ webgl: WEBGL, reducedMotion, frameMs }) || (FORCE && step === 'low')) root.classList.add('film');
         else {
           degrade();
           frameMs.length = 0;

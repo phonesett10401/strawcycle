@@ -22,7 +22,7 @@ export const nextStep = (step) => STEPS[Math.min(STEPS.length - 1, STEPS.indexOf
 export function parseFilmFlags(search) {
   const q = new URLSearchParams(search), mode = q.get('film');
   const num = (k) => { const s = q.get(k); return s === null || s.trim() === '' ? NaN : Number(s); };
-  const p = num('p'), t = num('t'), m = ['video', 'off', 'bench'].includes(mode) ? mode : null;
+  const p = num('p'), t = num('t'), m = ['video', 'off', 'bench', 'on'].includes(mode) ? mode : null;
   return {
     mode: m,
     p: Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : null,
