@@ -401,7 +401,7 @@ function build(canvas, renderer, tier) {
   {
     // then straw heaped on the piles (lying every which way over the mound)
     // Low (no post, so no bloom to fill the gaps) gets more, wider blades than density 1: the field must read full there too
-    const BLADE_W = { low: 0.04, medium: 0.03 }[tier.name] ?? 0.025, field = small ? 30000 : tier.name === 'low' ? 100000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
+    const BLADE_W = { low: 0.04, medium: 0.03 }[tier.name] ?? 0.025, field = small ? 40000 : tier.name === 'low' ? 100000 : n(BLADES), perPile = small ? 300 : Math.round(250 * Math.sqrt(tier.density)), count = field + 2 * perPile, r = rng(3), d = new THREE.Object3D();
     bladeU.uFieldN.value = field;                     // instances from here on are the straw heaped on the piles
     const g = new THREE.BufferGeometry();
     // thin, tapering
@@ -415,11 +415,13 @@ function build(canvas, renderer, tier) {
     d.rotation.order = 'YXZ';                         // tilt (x), then turn (y): lying straw points any way
     for (let i = 0; i < field; i++) {
       // v1's field: tall golden straw everywhere, swaying in the wind; phones (portrait, narrow view) get theirs where
-      // the camera looks; none in the hut's footprint (none at the lens: BLADE_V)
+      // the camera looks (it turns right toward the hut, up to ~30 deg off the axis when pulled back: the wedge reaches
+      // further right than left); none in the hut's footprint (none at the lens: BLADE_V)
       let x, z;
       do {
         z = (small ? 7.5 : 10) - r() * (small ? 41.5 : 44);
-        x = (r() - 0.5) * (small ? 6 + 0.7 * (10 - z) : 52);
+        const wl = small ? 3 + 0.35 * (10 - z) : 26, wr = small ? 4 + 0.62 * (10 - z) : 26;
+        x = r() * (wl + wr) - wl;
       } while (Math.abs(x - HUT[0]) < 1.6 * HUT_S && Math.abs(z - HUT[2]) < 1.4 * HUT_S);
       d.position.set(x, groundH(x, z) - 0.02, z);
       d.rotation.set((r() - 0.5) * 0.45, r() * 6.28, (r() - 0.5) * 0.45);
