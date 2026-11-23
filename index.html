@@ -22,7 +22,7 @@
     };
     // The film shows the stills instead when film.js has not started within 4 s (slow network, CDN blocked, error).
     // Not under ?film=video, ?film=bench or ?film=on: capture tools (and a forced film) wait as long as the shaders take.
-    if (!/[?&]film=(video|bench|on)\b/.test(location.search)) setTimeout(function () { if (!window.scFilm) window.scStills(); }, 4000);
+    if (!/[?&](film=(video|bench|on)|tier=high)\b/.test(location.search)) setTimeout(function () { if (!window.scFilm) window.scStills(); }, 4000);
   </script>
   <noscript><style>/* JS off: the JPG stills in each <noscript>, laid out as in stills mode (html.no-film in styles.css, which loads after this); the SVG placeholders stay hidden */ html .still:not(.still-nojs) { display: none; } html .still-nojs { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; } html .beat::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top, var(--film-scrim), transparent 65%); }</style></noscript>
   <link rel="stylesheet" href="styles.css">

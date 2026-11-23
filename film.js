@@ -16,6 +16,8 @@ const FLAGS = parseFilmFlags(location.search);
 const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
 // ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills); for showing it in class
 const FORCE = FLAGS.mode === 'on';
+// ?tier=high: High from the start and no step-downs, to see High on a PC that would start on Low
+const PIN = FLAGS.tier === 'high';
 // ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
 // One WebGL probe: does WebGL exist, and which GPU is it (integrated GPUs start on Low). Its context is freed at once.
 const probe = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
@@ -1407,7 +1409,7 @@ async function boot() {
     const t = (now - t0) / 1000;
     film.render(shown, t);
     tick(t);
-    if (VIDEO || BENCH) return;
+    if (VIDEO || BENCH || PIN) return;
     if (frameMs.length < 30 && ++frames > 5) {                  // skip shader-compile frames, then judge 30
       frameMs.push(dt);
       if (frameMs.length === 30) {
@@ -1450,7 +1452,7 @@ async function boot() {
       tick(t);
     },
   };
-  if (VIDEO || BENCH) root.classList.add('film');
+  if (VIDEO || BENCH || PIN) root.classList.add('film');
   if (BENCH) raf = requestAnimationFrame(benchFrame);
   else if (VIDEO) {
     if (FLAGS.p !== null || FLAGS.t !== null) { window.scFilm.render(FLAGS.p ?? 0, FLAGS.t ?? 0); root.dataset.filmReady = '1'; }

@@ -27,6 +27,6 @@ export function parseFilmFlags(search) {
     mode: m,
     p: Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : null,
     t: Number.isFinite(t) && t >= 0 ? t : null,
-    tier: m === 'video' && q.get('tier') === 'low' ? 'low' : null,
+    tier: m === 'video' && q.get('tier') === 'low' ? 'low' : q.get('tier') === 'high' ? 'high' : null,  // ?tier=high: test High on any PC
   };
 }

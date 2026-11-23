@@ -31,6 +31,7 @@ test('parseFilmFlags', () => {
   assert.deepEqual(T.parseFilmFlags('?tier=low'), { mode: null, p: null, t: null, tier: null });
   assert.deepEqual(T.parseFilmFlags('?film=bench'), { mode: 'bench', p: null, t: null, tier: null });
   assert.deepEqual(T.parseFilmFlags('?film=on'), { mode: 'on', p: null, t: null, tier: null });
+  assert.deepEqual(T.parseFilmFlags('?tier=high'), { mode: null, p: null, t: null, tier: 'high' });
   assert.deepEqual(T.parseFilmFlags('?film=nope'), { mode: null, p: null, t: null, tier: null });
   assert.deepEqual(T.parseFilmFlags(''), { mode: null, p: null, t: null, tier: null });
 });
