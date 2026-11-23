@@ -1361,12 +1361,17 @@ async function boot() {
   // window but must not move the anchors (p would jump); the beats are 100svh tall, so the layout stays put too
   const svh = Object.assign(document.createElement('div'), { ariaHidden: 'true' });
   svh.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100svh;visibility:hidden;pointer-events:none';
-  document.body.append(svh);
+  // the large viewport (URL bar hidden): the page's last scroll position is smallest then
+  const lvh = Object.assign(document.createElement('div'), { ariaHidden: 'true' });
+  lvh.style.cssText = 'position:fixed;top:0;left:0;width:0;height:100vh;height:100lvh;visibility:hidden;pointer-events:none';
+  document.body.append(svh, lvh);
   const measure = () => {
     const H = svh.offsetHeight || innerHeight, gap = Math.max(48, 0.08 * H);
     let x = 0; pts = [[0, 0.05]];
     caps.forEach((c, i) => { x = Math.max(x + 1, docTop(c) + c.offsetHeight - (H - gap)); pts.push([x, CAPTION_P[i] ?? CAPTION_P[CAPTION_P.length - 1]]); });
-    pts.push([Math.max(x + 1, docTop(doors) + doors.offsetHeight / 2 - H / 2), 1]);
+    // Home ends at the doors (no footer): p 1 must sit within reach even with the URL bar hidden
+    const last = document.documentElement.scrollHeight - Math.max(lvh.offsetHeight, innerHeight);
+    pts.push([Math.max(x + 1, Math.min(docTop(doors) + doors.offsetHeight / 2 - H / 2, last)), 1]);
   };
   const target = () => through(pts, scrollY);
   const stop = () => {

@@ -382,6 +382,10 @@ dialog .btn { width: 100%; }
 .stepper .btn { padding: 0; min-width: var(--tap); }
 .stepper input { text-align: center; }
 .pack { max-width: 40rem; }
+/* home pack with the meal box beside it (stacked on phones) */
+.pack--photo { max-width: none; display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: center; gap: var(--space-xl); }
+.pack-img { display: block; width: 100%; height: auto; max-height: 22rem; object-fit: cover; border-radius: var(--radius-card); }
+@media (max-width: 47.99rem) { .pack--photo { grid-template-columns: 1fr; } .pack-img { max-height: 14rem; } }
 .steps { display: grid; gap: var(--space-sm); max-width: 40rem; padding-left: var(--space-lg); }
 @media (min-width: 48rem) { .sponsor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2xl); } }
 
