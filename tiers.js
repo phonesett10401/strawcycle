@@ -7,11 +7,10 @@ export const TIERS = Object.freeze({
   ultra: tier('ultra', null, true, false, 30),
 });
 
-// Integrated GPUs start on Low: the High to Low step-down costs seconds of synchronous rebuilds there.
-const INTEGRATED = /Intel\(R\) (HD|UHD|Iris)|Intel.*(HD|UHD|Iris) Graphics|AMD Radeon\(TM\) (Graphics|Vega|[0-9]{3}M)|Radeon\(TM\) [0-9]{3}M|Mali|Adreno|PowerVR/i;
-export const pickTier = ({ width, coarse, deviceMemory, video, gpu }) => {
+// PCs and laptops start on High, integrated GPUs too (the slow-frame ladder below still steps down); phones and
+// tablets start on Low.
+export const pickTier = ({ width, coarse, deviceMemory, video }) => {
   if (video) return 'ultra';
-  if (gpu && INTEGRATED.test(gpu)) return 'low';
   return width < 768 || coarse || (deviceMemory != null && deviceMemory <= 4) ? 'low' : 'high';
 };
 

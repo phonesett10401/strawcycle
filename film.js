@@ -16,17 +16,15 @@ const FLAGS = parseFilmFlags(location.search);
 const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
 // ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills); for showing it in class
 const FORCE = FLAGS.mode === 'on';
-// ?tier=high: High from the start and no step-downs, to see High on a PC that would start on Low
+// ?tier=high: High from the start and no step-downs (a slow PC keeps High)
 const PIN = FLAGS.tier === 'high';
 // ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
-// One WebGL probe: does WebGL exist, and which GPU is it (integrated GPUs start on Low). Its context is freed at once.
+// One WebGL probe: does WebGL exist. Its context is freed at once.
 const probe = document.createElement('canvas').getContext('webgl2') || document.createElement('canvas').getContext('webgl');
 const WEBGL = !!probe;
-let GPU;
-try { GPU = probe?.getParameter(probe.getExtension('WEBGL_debug_renderer_info')?.UNMASKED_RENDERER_WEBGL); } catch { GPU = undefined; }
 probe?.getExtension('WEBGL_lose_context')?.loseContext();
 const TIER = TIERS[FLAGS.tier || pickTier({
-  width: innerWidth, coarse: matchMedia('(pointer: coarse)').matches, deviceMemory: navigator.deviceMemory, video: VIDEO, gpu: GPU,
+  width: innerWidth, coarse: matchMedia('(pointer: coarse)').matches, deviceMemory: navigator.deviceMemory, video: VIDEO,
 })];
 
 // Counters: illustrative story figures that follow the same t as the scene (film loop, scFilm.render, or the

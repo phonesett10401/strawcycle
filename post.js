@@ -1,5 +1,5 @@
 // Film post-processing, loaded only on High and Ultra after the first plain frame (see film.js).
-// Pipeline: scene -> bloom (emissive only) -> sun light rays -> warm grade + haze -> ACES output -> FXAA (ultra/video).
+// Pipeline: scene -> clean (NaN/Inf, HDR cap) -> bloom (emissive only) -> sun light rays -> warm grade + haze -> ACES output -> FXAA (ultra/video).
 // Every uniform is set from u each frame and nothing reads the previous frame, so a fixed (p, t) renders identically.
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
@@ -9,6 +9,21 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
 
 const VERT = /* glsl */`varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+
+// First pass after the scene: a pixel some GPUs (Intel) shade as NaN or Inf, or a stray far-too-bright one, would be
+// smeared by the bloom and the rays into a light flashing round the field. Zero it, and cap HDR well above the sun.
+const CLEAN = {
+  name: 'CleanShader',
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: VERT,
+  fragmentShader: /* glsl */`
+  uniform sampler2D tDiffuse; varying vec2 vUv;
+  void main() {
+    vec4 c = texture2D(tDiffuse, vUv);
+    if (any(isnan(c.rgb)) || any(isinf(c.rgb))) c.rgb = vec3(0.0);
+    gl_FragColor = vec4(clamp(c.rgb, 0.0, 16.0), c.a);
+  }`,
+};
 
 // Radial blur toward the sun: only bright pixels (sky glow, sun) stream, so ridges and the hut cut shafts into it.
 const RAYS = {
@@ -68,7 +83,7 @@ export function createPost(THREE, renderer, scene, camera, tier) {
   const rays = new ShaderPass(withSamples(RAYS, ultra ? 48 : 24));
   const grade = new ShaderPass(GRADE);
   const output = new OutputPass();                              // reads renderer.toneMapping (ACES) and its exposure
-  const passes = [new RenderPass(scene, camera), bloom, rays, grade, output];
+  const passes = [new RenderPass(scene, camera), new ShaderPass(CLEAN), bloom, rays, grade, output];
   let fxaa = null;
   if (!tier.msaa && tier.post) { fxaa = new ShaderPass(FXAAShader); passes.push(fxaa); }
   passes.forEach((p) => composer.addPass(p));
