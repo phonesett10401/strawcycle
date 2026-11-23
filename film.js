@@ -14,7 +14,8 @@ let THREE;
 // frames) and no speed check; frames come only from window.scFilm.render(p, t).
 const FLAGS = parseFilmFlags(location.search);
 const VIDEO = FLAGS.mode === 'video', BENCH = FLAGS.mode === 'bench';
-// ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills); for showing it in class
+// ?film=on: keep the film on a slow PC (it still steps down to Low, never to the stills) and under reduced motion
+// (shared PCs often have Windows animations off); for showing it in class
 const FORCE = FLAGS.mode === 'on';
 // ?film=video&tier=low captures the phone look; otherwise the tier follows the device (video is always ultra).
 // One WebGL probe: does WebGL exist, and which GPU is it (integrated GPUs start on Low). Its context is freed at once.
@@ -1318,7 +1319,7 @@ function fallback() {
 
 async function boot() {
   const canvas = document.getElementById('film');
-  const motion = matchMedia('(prefers-reduced-motion: reduce)'), reducedMotion = motion.matches;
+  const motion = matchMedia('(prefers-reduced-motion: reduce)'), reducedMotion = motion.matches && !FORCE;  // ?film=on is the visitor asking for the film
   if (!canvas || !WEBGL || reducedMotion || root.classList.contains('no-film') || FLAGS.mode === 'off') return fallback();
 
   let film;
@@ -1424,7 +1425,7 @@ async function boot() {
   const onResize = () => { film.resize(); measure(); };
   const onVis = () => { if (VIDEO || BENCH) return; cancelAnimationFrame(raf); if (!document.hidden && !manual) { last = 0; raf = requestAnimationFrame(frame); } };
   const onLost = (e) => { e.preventDefault(); stop(); };
-  const onMotion = (e) => { if (e.matches) stop(); };  // reduced motion switched on mid-visit: stills
+  const onMotion = (e) => { if (e.matches && !FORCE) stop(); };  // reduced motion switched on mid-visit: stills
   addEventListener('resize', onResize); document.addEventListener('visibilitychange', onVis);
   canvas.addEventListener('webglcontextlost', onLost); motion.addEventListener('change', onMotion);
   measure(); shown = target();
