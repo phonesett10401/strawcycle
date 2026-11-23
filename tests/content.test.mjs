@@ -1,7 +1,7 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs';
-test('impact: sources, 650 kg, estimate label', () => {
+test('impact: money flow pictures, 650 kg, estimate label', () => {
   const h = readFileSync('impact.html', 'utf8');
-  assert.ok((h.match(/<a [^>]*href="https:\/\//g) || []).length >= 3);
+  assert.equal((h.match(/class="flow-icon"/g) || []).length, 3);  // one picture per step
   assert.ok(h.includes('650 kg')); assert.match(h, /estimate/);
 });
 test('help: delivery and shipping terms', () => {

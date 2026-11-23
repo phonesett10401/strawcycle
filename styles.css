@@ -446,6 +446,7 @@ html.film .counter-block { padding: var(--space-md) var(--space-lg); border-radi
 .counters dd { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: var(--text-xl); }
 .doors { display: grid; align-content: start; min-height: 100svh; padding-block: calc(var(--header-h) * 2 + var(--space-lg)) var(--space-3xl); } /* clears the sticky header (two rows on phones) when centred at the end of the film */
 .doors h2 { margin: 0; }
+.doors-note { margin: var(--space-lg) 0 0; font-size: var(--text-sm); color: var(--color-ink-2); text-shadow: var(--film-shadow); }  /* Home ends at the doors (no footer): the demo line lives here */
 html.film .doors { margin-top: 50svh; }  /* more scroll for the flight to the café (p 0.72-1), so a normal flick still shows it */
 @media (max-width: 40rem) {
   .beat { padding-block: var(--space-2xl); }
@@ -461,9 +462,15 @@ html.film .doors { margin-top: 50svh; }  /* more scroll for the flight to the ca
 
 /* Impact and Help: facts list, three-step money flow, numbers list, FAQ */
 .facts { margin: 0 0 var(--space-lg); padding-left: var(--space-lg); max-width: 44rem; display: grid; gap: var(--space-sm); }
+/* Smoke Season facts with a picture each: picture left, text right */
+.facts--pics { list-style: none; padding-left: 0; max-width: 52rem; gap: var(--space-lg); }
+.facts--pics li { display: grid; grid-template-columns: 5.5rem 1fr; gap: var(--space-lg); align-items: center; }
+.facts--pics .fact-icon { width: 5.5rem; height: 5.5rem; margin: 0; }
 .flow { list-style: none; margin: 0 0 var(--space-lg); padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-xl); }
 .flow li { position: relative; }
 .flow li + li::before { content: ""; position: absolute; left: calc(-1 * var(--space-xl)); top: 50%; width: var(--space-xl); border-top: 2px solid var(--color-accent); }
+/* the step's picture (same drawings as the pitch video): a cream disc in both colour schemes */
+.flow-icon { display: block; width: 7.5rem; height: 7.5rem; margin-bottom: var(--space-md); border-radius: 50%; background: oklch(93% 0.04 85); box-shadow: 0 0 0 3px var(--color-accent); }
 .flow-n { font-family: var(--font-display); font-size: var(--text-xl); color: var(--color-accent); }
 .numbers { margin: 0 0 var(--space-lg); display: grid; gap: var(--space-md); max-width: 44rem; }
 .numbers div { padding-bottom: var(--space-md); border-bottom: 1px solid var(--color-rule); }

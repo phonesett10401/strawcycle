@@ -81,5 +81,5 @@ The stills are renders of the Ultra film at four points (`p` 0.12, 0.37, 0.72 an
 
 - [Three.js](https://threejs.org) r170 (MIT licence), loaded from jsDelivr, draws the Home film.
 - Fonts: Solway and Figtree from Google Fonts (SIL Open Font License).
-- Facts and sources: IQAir, GIZ Thailand (Thai-German Cooperation) and the SEED profile of Fang Thai Factory. Each source is linked on `impact.html`.
+- `impact.html`: how the money reaches the farmer (three illustrated steps) and the estimates the site uses.
 - The 3D models (hut, farmer, packaging, café) are our own work, built from the scripts in `blender/`, and so are the still images, rendered from the film.
